@@ -1,0 +1,32 @@
+# --- Python 忽略项 ---
+python_venv/
+__pycache__/
+*.py[cod]
+*.so
+*.pyd
+.pytest_cache/
+
+# --- Rust 忽略项 ---
+rustcore/target/
+**/*.rs.bk
+
+# --- C++ / CMake 忽略项 ---
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# --- 项目特定生成文件 ---
+# 忽略编译生成的动态库，但保留源码
+drl_app/*.so
+drl_app/*.pyd
+
+# --- IDE 配置 (可选) ---
+.vscode/
+.idea/
+.DS_Store
+
+# --- 数据集 (如果数据文件非常大，比如超过100MB，请取消下面这行的注释) ---
+# dataset/

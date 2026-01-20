@@ -1,0 +1,18 @@
+[package]
+name = "rustcore"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "my_project_backend"
+crate-type = ["cdylib"] # 必须，为了生成 Python 扩展
+
+[dependencies]
+pyo3 = { version = "0.23", features = ["extension-module"] }
+cxx = "1.0"
+numpy = "0.23" # 如果需要高效传递数组数据
+
+[build-dependencies]
+cxx-build = "1.0"
+cc = "1.0"
+pkg-config = "0.3"
