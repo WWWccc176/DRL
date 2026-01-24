@@ -1,0 +1,3 @@
+1.先看build.sh,编译cpp，rust.用那里面的命令即可
+2.在运行python代码之前，先启动python的虚拟环境：source python_venv/bin/activate
+（请自己创建，github不会记录我本地的虚拟环境。）

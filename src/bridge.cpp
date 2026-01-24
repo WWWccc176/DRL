@@ -171,19 +171,43 @@ ReductionResult run_reduction_core(rust::String matrix_str, rust::String method,
     }
 
     // 5. 计算 Cosine Matrix (扁平化)
+    //std::vector<double> cos_flat(n * n);
+    //for (int i = 0; i < n; ++i) {
+    //    for (int j = 0; j < n; ++j) {
+    //        if (i == j) {
+    //            cos_flat[i * n + j] = 0.0;
+    //        } else {
+    //            mpz_set_ui(dot_prod, 0);
+    //            for (int k = 0; k < cols; ++k) {
+    //                mpz_addmul(dot_prod, B[i][k].get_data(), B[j][k].get_data());
+    //            }
+    //            double dot = mpz_get_d(dot_prod);
+    //            double val = dot / (norms[i] * norms[j] + 1e-20);
+    //            cos_flat[i * n + j] = std::abs(val);
+    //        }
+    //    }
+    //}
+    //mpz_clears(norm_sq_i, dot_prod, nullptr);
     std::vector<double> cos_flat(n * n);
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < n; ++j) {
-            if (i == j) {
-                cos_flat[i * n + j] = 0.0;
-            } else {
+            // 只有当行号大于列号时 (i > j)，才是下三角区域
+            if (i > j) {
                 mpz_set_ui(dot_prod, 0);
+                // 计算点积
                 for (int k = 0; k < cols; ++k) {
                     mpz_addmul(dot_prod, B[i][k].get_data(), B[j][k].get_data());
                 }
+                
                 double dot = mpz_get_d(dot_prod);
+                // 计算余弦值
                 double val = dot / (norms[i] * norms[j] + 1e-20);
-                cos_flat[i * n + j] = std::abs(val);
+                
+                // 存入绝对值 (或者如果你想要原始余弦值，去掉 std::abs)
+                cos_flat[i * n + j] = std::abs(val); 
+            } else {
+                // 对角线 (i==j) 和 上三角 (i<j) 全部填 0
+                cos_flat[i * n + j] = 0.0;
             }
         }
     }

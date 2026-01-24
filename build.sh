@@ -3,4 +3,4 @@ cd rustcore
 maturin develop --release
 cd ..
 echo "Build Done! Ready to run Python."
-#./build.sh 直接敲这行
+#bash build.sh 直接敲这行
