@@ -1,3 +1,16 @@
-1.先看build.sh,编译cpp，rust.用那里面的命令即可
-2.在运行python代码之前，先启动python的虚拟环境：source python_venv/bin/activate
-（请自己创建，github不会记录我本地的虚拟环境。）
+1.先看build.sh,编译cpp，rust用那里面的命令即可
+
+read build.sh first, use the commands inside to compile cpp, rust.
+
+2.在运行python代码之前，先启动python的虚拟环境：source python_venv/bin/activate（请自己创建，github不会记录我本地的虚拟环境。）再python3 scripts/文件名.py 
+
+Before running .py codes, activate the virtual environment yourself first: source python_venv/bin/activate. Then: python3 scripts/filename.py 
+
+3.介绍一下项目的文件组成：（1）dataset里面放的是所有的挑战基（2）源码在以下三个文件夹中：src(cpp:bridge.cpp, bridge.h), scripts(python,可直接运行)， rustcore(rust)
+
+Let me introduce the file composition of the project: (1) The dataset contains all the challenge bases. (2) The source code is in the following three folders: src (cpp: bridge.cpp, bridge.h), scripts (python, which can be run directly), rustcore (rust)
+
+4.python负责所有的逻辑（整个项目也是建立于python框架的，项目由python启动）；cpp负责实现fplll这个库，负责计算lll,  bkz（如果不是这个库我在项目里其实不太想用cpp）；rust负责编译rust+cpp（把它们编成库直接给python调用，比在notebook里编译成程序使用快得多，因为数据在语言之间流动不经过硬盘），连接python和cpp，实现其他的python瓶颈性能的处理（函数直接放在lib,rs），其对于代码安全性的保证比cpp优秀，而且在与python连接时操作比cpp简单。
+
+Python is responsible for all the logic (the entire project is also built on the Python framework, and the project is started by Python); cpp is responsible for implementing the fplll library, which is responsible for calculating lll and bkz (if it weren't for this library, I wouldn't really want to use it in the project); rust is responsible for compiling rust+cpp (compiling them into a library for Python to call directly, which is much faster than compiling them into a program in the notebook, because data flows between languages without passing through the hard drive), connecting python and cpp, and implementing other python bottleneck performance processing (functions are placed directly in lib,rs), which is better than cpp in terms of code security, and is simpler to operate when connecting with python than cpp.
+

@@ -1,22 +1,3 @@
-//use pyo3::prelude::*;
-//
-//// 1. 定义 C++ 接口 (使用 cxx)
-//#[cxx::bridge]
-//mod ffi {
-//    unsafe extern "C++" {
-//        include!("src/your_header.h"); // C++ 头文件路径
-//        fn cpp_function(x: i32) -> i32; // C++ 函数声明
-//    }
-//}
-//
-//// 2. 实现 Rust 逻辑
-//#[pyfunction]
-//// 3. 暴露给 Python 的模块
-//#[pymodule]
-//fn my_project_backend(_py: Python, m: &PyModule) -> PyResult<()> {
-//    m.add_function(wrap_pyfunction!(rust_calculation, m)?)?;
-//    Ok(())
-//}
 use numpy::{PyArray1, PyArrayMethods};
 use pyo3::prelude::*;
 use pyo3::types::PyDict; // 引入 PyArrayMethods 以支持 reshape 等操作
@@ -68,6 +49,8 @@ fn run_reduction_rust(
 
     Ok(dict.into())
 }
+
+//#[pyfunction]//rust函数就写在这里，前面加这个就好
 
 // --- 3. 模块注册 (适配 PyO3 0.23 Bound API) ---
 #[pymodule]

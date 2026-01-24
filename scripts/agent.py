@@ -1,5 +1,5 @@
 import my_project_backend
-import os, sys, math, time, random, subprocess, re
+import os, sys, math, time, random, re
 import numpy as np
 import torch
 import torch.nn as nn
@@ -12,14 +12,7 @@ from mpmath import mp
 import matplotlib.pyplot as plt
 from collections import deque
 
-# ------------------------------
-# Reducer executables
-# ------------------------------
-LLL_EXE = "/kaggle/working/reducers/lll_reducer"
-BKZ_EXE = "/kaggle/working/reducers/bkz_reducer"
 
-assert os.path.exists(LLL_EXE), f"Missing {LLL_EXE}"
-assert os.path.exists(BKZ_EXE), f"Missing {BKZ_EXE}"
 
 # ------------------------------
 # Seed (optional but recommended)
@@ -30,6 +23,16 @@ np.random.seed(SEED)
 torch.manual_seed(SEED)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
+
+def matrix_to_string(basis):
+    # 将二维列表转换为 C++ 期望的字符串格式: [[1 2][3 4]]
+    lines = []
+    for row in basis:
+        # 将数字转为字符串并用空格连接
+        row_str = " ".join(str(x) for x in row)
+        lines.append(f"[{row_str}]")
+    # 用换行符连接所有行，并包裹在最外层的 []
+    return "[" + "\n".join(lines) + "]"
 
 # ------------------------------
 # Device
@@ -96,6 +99,27 @@ def compute_metrics_robust(basis, prec=200):
 
 compute_metrics = compute_metrics_robust
 
+def extract_features_from_rust(rust_info, dim):
+    """
+    直接从 Rust 返回的字典中提取 State 需要的特征
+    rust_info keys: 'matrix_str', 'log_prod', 'min_norm', 'cos_matrix'
+    """
+    # 1. 处理 Cosine Matrix
+    # Rust 返回的是完整矩阵 (或下三角)，我们需要上三角特征
+    # 假设 rust_info['cos_matrix'] 是 numpy array (由 lib.rs 转换)
+    C = rust_info['cos_matrix'] 
+    
+    # 取上三角 (不含对角线 k=1)
+    iu = np.triu_indices(dim, 1)
+    upper = C[iu].astype(np.float32)
+    
+    # 计算 theta_min
+    max_cos = float(np.max(upper)) if upper.size else -1.0
+    max_cos = float(np.clip(max_cos, -1.0, 1.0))
+    theta_min = float(np.arccos(max_cos))
+    
+    return upper, theta_min
+
 # ------------------------------
 # Parse SVP challenge
 # ------------------------------
@@ -132,50 +156,40 @@ def parse_challenge_file(filepath):
 # ------------------------------
 # Run reducers (whole matrix or block matrix)
 # ------------------------------
-def run_reduction_wrapper(matrix_data, beta, step_id, debug=False, keep_files_on_error=True):
-    in_file  = f"/kaggle/working/temp_in_{step_id}.txt"
-    out_file = f"/kaggle/working/temp_out_{step_id}.txt"
-
-    with open(in_file, "w") as f:
-        for row in matrix_data:
-            f.write(" ".join(str(int(x)) for x in row) + "\n")
-
-    try:
-        if beta <= 2:
-            cmd = [LLL_EXE, in_file, out_file]
-        else:
-            cmd = [BKZ_EXE, in_file, out_file, str(int(beta))]
-
-        res = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-        new_matrix = []
-        with open(out_file, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    new_matrix.append([int(x) for x in line.split()])
-
-        if debug:
-            print(f"[reducer ok] beta={beta} step_id={step_id} rows={len(new_matrix)} cols={len(new_matrix[0]) if new_matrix else 0}")
-
-        os.remove(in_file)
-        os.remove(out_file)
-        return new_matrix
-
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Reducer failed (beta={beta}, step_id={step_id})")
-        print("CMD:", e.cmd)
-        print("stdout:\n", e.stdout[:2000])
-        print("stderr:\n", e.stderr[:2000])
-
-        if not keep_files_on_error:
-            if os.path.exists(in_file): os.remove(in_file)
-            if os.path.exists(out_file): os.remove(out_file)
-        else:
-            print("⚠️ Kept temp files for debugging:")
-            print("  ", in_file)
-            print("  ", out_file)
-        raise
+def run_reduction_wrapper(matrix_data, beta, step_id, debug=False):
+    # 1. 序列化矩阵
+    mat_str = matrix_to_string(matrix_data)
+    
+    # 2. 确定方法
+    method = "LLL" if beta <= 2 else "BKZ"
+    
+    # 3. 调用 Rust 接口 (内存级交互)
+    # result 是一个字典，包含: 'matrix_str', 'log_prod', 'min_norm', 'cos_matrix'
+    result = my_project_backend.run_reduction_rust(mat_str, method, int(beta))
+    
+    # 4. 解析返回的矩阵字符串 (格式: [[1 2][3 4]])
+    # C++ dump_matrix_core 返回的格式需要解析回 Python list
+    new_matrix_str = result['matrix_str']
+    
+    # 简单的解析逻辑 (比正则快)
+    new_matrix = []
+    # 去掉首尾的 [ ]
+    content = new_matrix_str.strip()[1:-1]
+    if content:
+        # 按行分割 (假设 C++ 用 \n 分隔行)
+        rows = content.split('\n') # 或者 split('][') 取决于 C++ dump 实现
+        for r in rows:
+            # 清理行内的括号
+            r_clean = r.replace('[', '').replace(']', '').strip()
+            if r_clean:
+                new_matrix.append([int(x) for x in r_clean.split()])
+                
+    metrics = {
+        'log_prod': result['log_prod'], # Sum log ||b_i||
+        'cos_matrix': np.array(result['cos_matrix'], dtype=np.float32),
+        # 如果 C++ 没算 theta_min，这里可以用 cos_matrix 快速算
+    }
+    return new_matrix, metrics # 返回 result 以便利用 C++ 算好的 Metrics
 
 # ------------------------------
 # Safe float conversion (avoid overflow)
@@ -494,6 +508,7 @@ class LatticeEnv:
 
         self._cached_metrics = (float("inf"), float("inf"))
         self._step_global = 0
+        self.initial_log_vol = np.sum(get_gs_log_norms(self.initial_matrix))
         self.reset()
 
     def reset(self):
@@ -502,70 +517,91 @@ class LatticeEnv:
         self._step_global += 1
 
         # init: LLL
-        self.basis = run_reduction_wrapper(self.basis, 2, f"init_{self._step_global}", debug=False)
-
+        self.basis, self.last_rust_info = run_reduction_wrapper(self.basis, 2, f"init_{self._step_global}")
         # robust metrics for logging
         self._cached_metrics = compute_metrics(self.basis)
 
-        self.state = self._get_state()
+        self.state = self._get_state(self.last_rust_info)
         return self.state
 
-    def _get_state(self):
-        cos_feat, theta_min = cosine_upper_triangle_features(self.basis)
+    def _get_state(self, rust_info):
+        
+        # 1. Cosine 特征 (直接从 Rust 拿)
+        cos_feat, theta_min = extract_features_from_rust(rust_info, self.dim)
 
+        # 2. GS 特征 (目前还得 Python 算，除非升级 C++)
         gs_logs = get_gs_log_norms(self.basis)
         gs_feat = (gs_logs - gs_logs.mean()) / (gs_logs.std() + 1e-6)
         gs_feat = gs_feat.astype(np.float32)
 
-        log_defect = float(compute_log_ortho_defect_fast(self.basis))
+        # 3. Defect (利用 Rust 算的 log_prod)
+        # log_defect = log_prod_norms - log_vol
+        log_prod = rust_info['log_prod']
+        log_defect = float(log_prod - self.initial_log_vol)
 
         tail = np.array([theta_min, log_defect], dtype=np.float32)
         s = np.concatenate([cos_feat, gs_feat, tail], axis=0).astype(np.float32)
         return s
 
+
     def step(self, action_idx):
         beta, pos = self.action_map[int(action_idx)]
-        self.current_step += 1
-        self._step_global += 1
 
-        # old (fast)
-        old_log_def = float(compute_log_ortho_defect_fast(self.basis))
-        _, old_theta = cosine_upper_triangle_features(self.basis)
+        # ---------------------------------------------------------
+        # 1. 获取旧状态指标 (从 self.last_rust_info 快速获取)
+        # ---------------------------------------------------------
+        old_cos_feat, old_theta = extract_features_from_rust(self.last_rust_info, self.dim)
+        
+        # 利用 Rust 算的 log_prod 快速算 defect
+        old_log_def = float(self.last_rust_info['log_prod'] - self.initial_log_vol)
 
+        # 计算局部 Block 的 defect (目前 Rust 没返回局部信息，只能 Python 算，这是性能瓶颈)
+        # 如果为了极致速度，可以暂时去掉 R_local
         old_block = [row[:] for row in self.basis[pos:pos+beta]]
         old_local_log_def = float(compute_log_ortho_defect_fast(old_block))
 
-        # pipeline: LLL -> BKZ(beta,pos) (block-approx)
-        self.basis = run_reduction_wrapper(self.basis, 2, f"prelll_{self._step_global}", debug=False)
+        # ---------------------------------------------------------
+        # 2. 执行动作 (调用 Rust)
+        # ---------------------------------------------------------
+        # 🛠️ 修复: 去掉非法的 ... 语法，传入正确的 step_id
+        self.basis, new_rust_info = run_reduction_wrapper(self.basis, beta, self._step_global)
 
-        block = [row[:] for row in self.basis[pos:pos+beta]]
-        block_new = run_reduction_wrapper(block, beta, f"blk_{self._step_global}", debug=False)
-        self.basis[pos:pos+beta] = block_new
-
-        # new (fast)
-        new_log_def = float(compute_log_ortho_defect_fast(self.basis))
-        _, new_theta = cosine_upper_triangle_features(self.basis)
-
+        # ---------------------------------------------------------
+        # 3. 获取新状态指标
+        # ---------------------------------------------------------
+        new_cos_feat, new_theta = extract_features_from_rust(new_rust_info, self.dim)
+        new_log_def = float(new_rust_info['log_prod'] - self.initial_log_vol)
+        
         new_block = [row[:] for row in self.basis[pos:pos+beta]]
         new_local_log_def = float(compute_log_ortho_defect_fast(new_block))
 
-        # reward parts
+        # 更新全局步数和缓存
+        self.current_step += 1
+        self._step_global += 1
+        self.last_rust_info = new_rust_info
+
+        # ---------------------------------------------------------
+        # 4. 计算 Reward
+        # ---------------------------------------------------------
         R_global = old_log_def - new_log_def
         R_local  = old_local_log_def - new_local_log_def
-        R_theta  = new_theta - old_theta
+        R_theta  = new_theta - old_theta # 假设 theta 越大越好(越正交)
 
         reward = self.alpha*R_global + self.beta_w*R_local + self.gamma*R_theta
-        reward -= self.cost_w * float(beta)  # small cost
+        reward -= self.cost_w * float(beta)
 
         done = (self.current_step >= self.max_steps)
 
-        # robust metrics for logging
+        # ---------------------------------------------------------
+        # 5. Logging & State Update
+        # ---------------------------------------------------------
+        # Robust metrics (仅在需要时计算)
+        defect_r, gh_ratio_r = 0.0, 0.0
         if (self.current_step % self.metrics_every) == 0 or done:
-            self._cached_metrics = compute_metrics(self.basis)
+            defect_r, gh_ratio_r = compute_metrics(self.basis)
 
-        defect_r, gh_ratio_r = self._cached_metrics
-
-        self.state = self._get_state()
+        # 🛠️ 修复: 传入 new_rust_info
+        self.state = self._get_state(new_rust_info)
 
         info = {
             "beta": beta,
@@ -591,7 +627,6 @@ class LatticeEnv:
             )
 
         return self.state, float(reward), bool(done), info
-
 # ------------------------------
 # Train
 # ------------------------------
@@ -665,23 +700,29 @@ def train(env, agent, episodes=200, print_every=10, debug_each_step=False):
 # ------------------------------
 # Dataset path
 # ------------------------------
-DATA_DIR = "/kaggle/input/svpchallenge-all"
-TRAIN_FILE = os.path.join(DATA_DIR, "svpchallengedim50seed0.txt")
+# 定义项目根目录 (假设 agent.py 在 scripts/ 下)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATASET_DIR = os.path.join(PROJECT_ROOT, "dataset")
+RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
 
-if not os.path.exists(TRAIN_FILE):
-    print(f"⚠️ {TRAIN_FILE} not found; creating dummy 50x50.")
-    dim = 50
-    np.random.seed(42)
-    A = np.random.randint(-100, 100, (dim, dim))
-    while np.linalg.det(A) == 0:
-        A = np.random.randint(-100, 100, (dim, dim))
-    TRAIN_FILE = "dummy_svp_50.txt"
-    with open(TRAIN_FILE, "w") as f:
-        f.write("[\n")
-        for row in A:
-            f.write("[ " + " ".join(map(str, row)) + " ]\n")
-        f.write("]\n")
+# 确保输出目录存在
+os.makedirs(RESULTS_DIR, exist_ok=True)
 
+# 自动选择文件
+def get_challenge_file():
+    if not os.path.exists(DATASET_DIR):
+        raise FileNotFoundError(f"Dataset directory not found: {DATASET_DIR}")
+    
+    files = [f for f in os.listdir(DATASET_DIR) if f.endswith('.txt')]
+    if not files:
+        raise FileNotFoundError("No .txt files found in dataset directory")
+    
+    # 这里可以改为指定文件名，或者随机选一个
+    selected_file = os.path.join(DATASET_DIR, files[0])
+    print(f"📂 Using challenge file: {selected_file}")
+    return selected_file
+
+TRAIN_FILE = get_challenge_file()
 print("📂 Training on:", TRAIN_FILE)
 
 # ------------------------------
@@ -716,7 +757,10 @@ plt.title("Approximation Factor (Lower is Better)")
 plt.xlabel("Episode")
 plt.grid(True)
 
-plt.show()
+plot_path = os.path.join(RESULTS_DIR, "training_evolution.png")
+plt.savefig(plot_path)
+print(f"📊 Plot saved to {plot_path}")
 
 print(f"Final Best GH_min_robust: {min(history['gh_min_robust'])}")
 print(f"Final Best GH_min_fast:   {min(history['gh_min_fast'])}")
+
