@@ -105,20 +105,25 @@ def extract_features_from_rust(rust_info, dim):
     rust_info keys: 'matrix_str', 'log_prod', 'min_norm', 'cos_matrix'
     """
     # 1. 处理 Cosine Matrix
-    # Rust 返回的是完整矩阵 (或下三角)，我们需要上三角特征
-    # 假设 rust_info['cos_matrix'] 是 numpy array (由 lib.rs 转换)
     C = rust_info['cos_matrix'] 
     
-    # 取上三角 (不含对角线 k=1)
-    iu = np.triu_indices(dim, 1)
-    upper = C[iu].astype(np.float32)
+    # ⚠️ 逻辑修正：
+    # C++ 代码生成的是下三角矩阵 (i > j 有值，其余为 0)
+    # 所以必须使用 tril_indices (Lower Triangle) 提取特征
+    # k=-1 表示不包含主对角线
+    il = np.tril_indices(dim, -1)
+    lower = C[il].astype(np.float32)
     
-    # 计算 theta_min
-    max_cos = float(np.max(upper)) if upper.size else -1.0
-    max_cos = float(np.clip(max_cos, -1.0, 1.0))
+    # ⚠️ 拼写修复：
+    # 原代码: if RESULTS_DIRpper.size ... (这是乱码)
+    # 修正为: if lower.size ...
+    max_cos = float(np.max(lower)) if lower.size > 0 else 0.0
+    
+    # 截断防止数值误差导致 arccos 报错
+    max_cos = float(np.clip(max_cos, 0.0, 1.0))
     theta_min = float(np.arccos(max_cos))
     
-    return upper, theta_min
+    return lower, theta_min
 
 # ------------------------------
 # Parse SVP challenge
@@ -664,8 +669,11 @@ def train(env, agent, episodes=200, print_every=10, debug_each_step=False):
 
             s = ns
             ep_reward += r
-
-            gh_robust_list.append(float(info["gh_ratio_robust"]))
+            
+            current_gh_r = float(info["gh_ratio_robust"])
+            if current_gh_r > 1e-6: # 只有当它被计算时(非0)才记录
+                gh_robust_list.append(float(info["gh_ratio_robust"]))
+            
             _, gh_fast = compute_metrics_float(env.basis)
             gh_fast_list.append(float(gh_fast))
 
