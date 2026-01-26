@@ -708,7 +708,6 @@ def train(env, agent, episodes=200, print_every=10, debug_each_step=False):
 # ------------------------------
 # Dataset path
 # ------------------------------
-# 定义项目根目录 (假设 agent.py 在 scripts/ 下)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATASET_DIR = os.path.join(PROJECT_ROOT, "dataset")
 RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
@@ -716,21 +715,36 @@ RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
 # 确保输出目录存在
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-# 自动选择文件
-def get_challenge_file():
+# 1. 定义你要使用的维度和可能的种子 (根据截图推测种子通常是 0)
+DIM = 70
+SEED = 0 
+
+# 2. 修改函数：接收 dim 参数，根据截图中的文件名格式构建路径
+def get_challenge_file(dim, seed=0):
     if not os.path.exists(DATASET_DIR):
         raise FileNotFoundError(f"Dataset directory not found: {DATASET_DIR}")
     
-    files = [f for f in os.listdir(DATASET_DIR) if f.endswith('.txt')]
-    if not files:
-        raise FileNotFoundError("No .txt files found in dataset directory")
+    # ⚠️【关键修改】根据截图 image_f2f21e.png 的文件名格式进行拼接
+    # 格式为: svpchallengedim{维度}seed{种子}.txt
+    filename = f"svpchallengedim{dim}seed{seed}.txt"
     
-    # 这里可以改为指定文件名，或者随机选一个
-    selected_file = os.path.join(DATASET_DIR, files[0])
+    selected_file = os.path.join(DATASET_DIR, filename)
+    
+    # 检查文件是否存在，防止拼写错误或文件缺失
+    if not os.path.exists(selected_file):
+        raise FileNotFoundError(f"Target file not found: {selected_file}\n请检查 dataset 目录下是否有维度为 {dim} 的文件。")
+    
     print(f"📂 Using challenge file: {selected_file}")
     return selected_file
 
-TRAIN_FILE = get_challenge_file()
+# 3. 调用函数
+try:
+    TRAIN_FILE = get_challenge_file(DIM, SEED)
+    print("📂 Training on:", TRAIN_FILE)
+except FileNotFoundError as e:
+    print(f"❌ Error: {e}")
+
+TRAIN_FILE = get_challenge_file(DIM)
 print("📂 Training on:", TRAIN_FILE)
 
 # ------------------------------
