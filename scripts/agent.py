@@ -181,7 +181,7 @@ def run_reduction_wrapper(matrix_data, beta, step_id, debug=False):
 
     # 3. 调用 Rust 接口 (内存级交互)
     # result 是一个字典，包含: 'matrix_str', 'log_prod', 'min_norm', 'cos_matrix'
-    result = my_project_backend.run_reduction_rust(mat_str, method, int(beta))
+    result = my_project_backend.run_reduction_rust(mat_str, method, int(beta))  # type: ignore
 
     # 4. 解析返回的矩阵字符串 (格式: [[1 2][3 4]])
     # C++ dump_matrix_core 返回的格式需要解析回 Python list
@@ -374,15 +374,15 @@ class NoisyLinear(nn.Module):
     def reset_noise(self):
         eps_in = self.scale_noise(self.in_features)
         eps_out = self.scale_noise(self.out_features)
-        self.weight_epsilon.copy_(eps_out.ger(eps_in))
-        self.bias_epsilon.copy_(eps_out)
+        self.weight_epsilon.copy_(eps_out.ger(eps_in))  # type: ignore
+        self.bias_epsilon.copy_(eps_out)  # type: ignore
 
     def forward(self, x):
         if self.training:
             return F.linear(
                 x,
-                self.weight_mu + self.weight_sigma * self.weight_epsilon,
-                self.bias_mu + self.bias_sigma * self.bias_epsilon,
+                self.weight_mu + self.weight_sigma * self.weight_epsilon,  # type: ignore
+                self.bias_mu + self.bias_sigma * self.bias_epsilon,  # type: ignore
             )
         return F.linear(x, self.weight_mu, self.bias_mu)
 
@@ -439,7 +439,7 @@ class DQNAgent:
         self.gamma = 0.99
         self.tau = 0.005
 
-        self.scaler = torch.amp.GradScaler("cuda", enabled=self.use_amp)
+        self.scaler = torch.amp.GradScaler("cuda", enabled=self.use_amp)  # type: ignore
 
     def act(self, state, is_training=True):
         s = torch.as_tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
@@ -481,7 +481,7 @@ class DQNAgent:
 
             self.optimizer.zero_grad(set_to_none=True)
 
-            with torch.amp.autocast("cuda", enabled=self.use_amp):
+            with torch.amp.autocast("cuda", enabled=self.use_amp):  # type: ignore
                 self.q_net.reset_noise()
                 curr_q = self.q_net(s).gather(1, a)
                 loss = F.mse_loss(curr_q, target_q)

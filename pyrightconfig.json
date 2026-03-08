@@ -3,5 +3,9 @@
   "venv": "python_venv",
   "extraPaths": [
     "./" 
+    "./scripts",
+    "./rustcore",
+    "./build",     
+    "./drl_app"
   ]
 }
