@@ -1,12 +1,12 @@
 #pragma once
-#include <string>
 #include "rust/cxx.h"
-#include <vector>
-#include <memory>
 
-// 2. 引入 Rust 生成的头文件
-// 路径格式通常是: "包名/src/文件名.rs.h"
-#include "rustcore/src/lib.rs.h"
-
-// 3. 修改函数签名：使用 rust::String 替代 std::string
+// 精简后的结构体，只包含字符串和行列数
+//struct ReductionResult {
+//    rust::String matrix_str;
+//    int rows;
+//    int cols;
+//};
+struct ReductionResult;
+// 函数声明保持不变
 ReductionResult run_reduction_core(rust::String matrix_str, rust::String method, int param);

@@ -3,6 +3,7 @@ import numpy as np
 import os
 import math
 import sys
+import concurrent.futures
 
 # ================= 配置路径 =================
 # 获取当前脚本所在目录 (scripts/)
@@ -16,9 +17,9 @@ sys.path.append(os.path.join(project_root, "build"))  # 以防万一
 try:
     import my_project_backend
 
-    print("✅ C++ 模块加载成功！")
+    print("C++ 模块加载成功！")
 except ImportError as e:
-    print(f"❌ 无法加载 C++ 模块: {e}")
+    print(f"无法加载 C++ 模块: {e}")
     sys.exit(1)
 
 DATASET_DIR = os.path.join(project_root, "dataset")
@@ -37,6 +38,51 @@ def get_log_det(matrix_str):
     # 使用 slogdet 计算 log(|det(L)|)
     sign, logdet = np.linalg.slogdet(arr)
     return logdet
+
+
+# ================= 核心处理函数 (用于并发) =================
+def process_single_dim(dim, stages):
+    """处理单个维度的所有规约阶段"""
+    filename = f"svpchallengedim{dim}seed0.txt"
+    filepath = os.path.join(DATASET_DIR, filename)
+
+    if not os.path.exists(filepath):
+        print(f"⚠️ 跳过 Dim {dim}: 文件不存在")
+        return dim, None, None
+
+    print(f"🚀 开始处理 Dim {dim}...", flush=True)
+
+    with open(filepath, "r") as f:
+        raw_str = f.read()
+
+    original_log_det = get_log_det(raw_str)
+    current_str = raw_str
+
+    local_plot_data = {}
+    local_stats_data = {}
+
+    for method, param in stages:
+        label = "LLL" if method == "LLL" else f"BKZ-{param}"
+        key = f"Dim{dim}_{label}"
+
+        # 调用 Rust/C++ 后端
+        res = my_project_backend.run_reduction_rust(current_str, method, param)  # type: ignore
+
+        current_str = res["matrix_str"]
+        local_plot_data[key] = res["cos_matrix"]
+
+        log_prod = res["log_prod"]
+        defect = math.exp((log_prod - original_log_det) / dim)
+        geom_mean = math.exp(log_prod / dim)
+
+        local_stats_data[key] = {
+            "defect": defect,
+            "min": res["min_norm"],
+            "mean": geom_mean,
+        }
+
+    print(f"✅ Dim {dim} 规约完成.")
+    return dim, local_plot_data, local_stats_data
 
 
 # ================= 主程序 =================
