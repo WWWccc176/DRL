@@ -231,11 +231,13 @@
 #include "rustcore/src/lib.rs.h"
 #include <fplll/fplll.h>
 #include <sstream>
+#include <cmath>
+#include <vector>
 
 using namespace fplll;
 using MyMatrix = ZZ_mat<mpz_t>;
 
-// 辅助函数保持不变
+// 补回丢失的解析函数
 MyMatrix parse_matrix_core(const std::string& input_str) {
     MyMatrix B;
     std::stringstream ss(input_str);
@@ -243,6 +245,7 @@ MyMatrix parse_matrix_core(const std::string& input_str) {
     return B;
 }
 
+// 补回丢失的序列化函数
 std::string dump_matrix_core(MyMatrix& B) {
     std::stringstream ss;
     ss << "[";
@@ -259,14 +262,14 @@ std::string dump_matrix_core(MyMatrix& B) {
     return ss.str();
 }
 
-// 核心函数：大幅精简，剥离所有 f64 计算
+// 核心函数 (使用指针/内存数组传递，摆脱高频字符串解析)
 ReductionResult run_reduction_core(rust::String matrix_str, rust::String method, int param) {
     std::string matrix_s(matrix_str);
     std::string method_s(method);
     
     MyMatrix B = parse_matrix_core(matrix_s);
     
-    // 1. 仅保留核心的 LLL/BKZ 逻辑
+    // 1. 执行约化算法
     if (method_s == "LLL") {
         lll_reduction(B, 0.99);
     } else if (method_s == "BKZ") {
@@ -274,10 +277,57 @@ ReductionResult run_reduction_core(rust::String matrix_str, rust::String method,
         else bkz_reduction(B, param, BKZ_DEFAULT);
     }
 
-    // 2. 只返回字符串和维度信息
+    int rows = B.get_rows();
+    int cols = B.get_cols();
+    
+    // 2. 预分配内存，准备将计算结果直接以连续内存(指针)形式传给 Rust
+    rust::Vec<double> flat_matrix;
+    rust::Vec<double> row_log_scales;
+    flat_matrix.reserve(rows * cols);
+    row_log_scales.reserve(rows);
+
+    const double LOG2 = 0.6931471805599453;
+
+    // 3. 直接在 C++ 端提取大整数的高精度尾数和量级，避免字符串截断
+    for (int i = 0; i < rows; ++i) {
+        double max_log_val = -1e300;
+        std::vector<double> temp_mantissas(cols, 0.0);
+        std::vector<double> temp_logs(cols, -1e300);
+
+        for (int j = 0; j < cols; ++j) {
+            long exp = 0;
+            // mpz_get_d_2exp 提取尾数(区间[0.5, 1))和指数，避免浮点溢出
+            double mantissa = mpz_get_d_2exp(&exp, B[i][j].get_data());
+            if (mantissa != 0.0) {
+                // 计算该元素的真实自然对数: ln(|value|) = ln(|mantissa|) + exp * ln(2)
+                double log_val = std::log(std::abs(mantissa)) + exp * LOG2;
+                temp_logs[j] = log_val;
+                temp_mantissas[j] = mantissa;
+                if (log_val > max_log_val) {
+                    max_log_val = log_val;
+                }
+            }
+        }
+
+        row_log_scales.push_back(max_log_val > -1e299 ? max_log_val : 0.0);
+
+        // 生成缩放后的矩阵，映射到 [-1.0, 1.0] 范围内
+        for (int j = 0; j < cols; ++j) {
+            if (temp_logs[j] > -1e299) {
+                double diff = temp_logs[j] - max_log_val;
+                double sign = temp_mantissas[j] > 0 ? 1.0 : -1.0;
+                flat_matrix.push_back(sign * std::exp(diff));
+            } else {
+                flat_matrix.push_back(0.0);
+            }
+        }
+    }
+
     return ReductionResult {
-        rust::String(dump_matrix_core(B)), 
-        B.get_rows(),
-        B.get_cols()
+        rust::String(dump_matrix_core(B)), // 仅保留给 Python 做外部存储或初始化用
+        rows,
+        cols,
+        flat_matrix,
+        row_log_scales
     };
 }
