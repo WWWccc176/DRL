@@ -451,19 +451,20 @@ mod ffi {
         matrix_str: String,
         rows: i32,
         cols: i32,
-        // 新增接收 C++ 传来的连续内存数组
         flat_matrix: Vec<f64>,
         row_log_scales: Vec<f64>,
     }
     unsafe extern "C++" {
         include!("src/bridge.h");
-        fn run_reduction_core(matrix_str: String, method: String, param: i32) -> ReductionResult;
+        // 【修改】：增加 pos 参数
+        fn run_reduction_core(
+            matrix_str: String,
+            method: String,
+            param: i32,
+            pos: i32,
+        ) -> ReductionResult;
     }
 }
-// =====================================================================
-// 第一层：核心数学与工具函数 (纯 Rust，无 Python 依赖，可独立调用)
-// =====================================================================
-
 /// 1. 解析并缩放矩阵 (防溢出核心)
 pub fn parse_and_scale_matrix(matrix_str: &str) -> (Vec<Vec<f64>>, Vec<f64>) {
     let lines: Vec<&str> = matrix_str
@@ -633,20 +634,20 @@ pub fn compute_local_defect(
 // =====================================================================
 // 第二层：PyO3 接口层 (负责调用底层函数并打包给 Python)
 // =====================================================================
-
 #[pyfunction]
 fn run_reduction_rust(
     py: Python,
     matrix_str: String,
     method: String,
     param: i32,
+    pos: i32, // 【修改】：接收 Python 传来的 pos
 ) -> PyResult<PyObject> {
-    // 1. 调用 C++ 执行约化，拿到直接填充好的特征数组
-    let result = ffi::run_reduction_core(matrix_str, method, param);
+    // 传入 pos 给 C++
+    let result = ffi::run_reduction_core(matrix_str, method, param, pos);
+
     let n = result.rows as usize;
     let cols = result.cols as usize;
 
-    // 2. 将扁平的一维数组直接重组为 Vec<Vec<f64>> (无需解析字符串！)
     let mut matrix = Vec::with_capacity(n);
     let mut idx = 0;
     for _ in 0..n {
@@ -659,23 +660,22 @@ fn run_reduction_rust(
     }
     let row_log_scales = result.row_log_scales;
 
-    // 3. 直接进行数学计算
     let (scaled_norms, log_prod, min_log_norm) =
         compute_norms_and_metrics(&matrix, &row_log_scales);
     let cos_flat = compute_cosine_matrix(&matrix, &scaled_norms);
 
-    // 4. 返回 Python 对象
     let array_1d = PyArray1::from_vec(py, cos_flat);
     let cos_matrix_2d = array_1d.reshape((n, n))?;
 
     let dict = PyDict::new(py);
-    dict.set_item("matrix_str", result.matrix_str)?; // 依然传回字符串供外部调用保存
+    dict.set_item("matrix_str", result.matrix_str)?;
     dict.set_item("log_prod", log_prod)?;
     dict.set_item("min_norm", min_log_norm.exp())?;
     dict.set_item("cos_matrix", cos_matrix_2d)?;
 
     Ok(dict.into())
 }
+
 #[pyfunction]
 fn evaluate_state_rust(
     py: Python,

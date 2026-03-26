@@ -8,5 +8,6 @@
 //    int cols;
 //};
 struct ReductionResult;
-// 函数声明保持不变
-ReductionResult run_reduction_core(rust::String matrix_str, rust::String method, int param);
+
+// 【修复这里】：在最后加上 int pos 参数，与 bridge.cpp 和 lib.rs 保持一致！
+ReductionResult run_reduction_core(rust::String matrix_str, rust::String method, int param, int pos);
