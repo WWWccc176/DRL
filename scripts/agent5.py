@@ -121,29 +121,40 @@ class NoisyLinear(nn.Module):
         return F.linear(x, self.weight_mu, self.bias_mu)
 
 
-class Transformer_DuelingDDQN(nn.Module):
+class AxialCNN_DuelingDDQN(nn.Module):
     def __init__(self, max_dim, action_dim):
         super().__init__()
         self.max_dim = max_dim
-        # 每个 Token 的特征维度: 1 (GS范数) + max_dim (与其他向量的余弦夹角)
-        self.token_dim = max_dim
+        self.token_dim = max_dim  # 移除 GS，只剩 max_dim (余弦矩阵行维度)
 
-        # Transformer 编码器
-        self.embedding = nn.Linear(self.token_dim, 128)
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=128, nhead=4, dim_feedforward=256, batch_first=True
-        )
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=2)
-
-        # 全局标量特征处理 (max_cos, min_cos, defect, ratio)
-        self.scalar_mlp = nn.Sequential(
-            nn.Linear(4, 32), nn.ReLU(), nn.Linear(32, 32), nn.ReLU()
+        # 分支 A: 沿列扫描 (核大小 5x1)
+        self.col_conv = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=(5, 1), padding=(2, 0)),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=(5, 1), padding=(2, 0)),
+            nn.ReLU(),
         )
 
-        # 融合层
-        self.fusion = nn.Sequential(nn.Linear(128 + 32, 256), nn.ReLU())
+        # 分支 B: 沿行扫描 (核大小 1x5)
+        self.row_conv = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=(1, 5), padding=(0, 2)),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=(1, 5), padding=(0, 2)),
+            nn.ReLU(),
+        )
 
-        # Dueling 头
+        self.fuse_conv = nn.Sequential(nn.Conv2d(64, 64, kernel_size=1), nn.ReLU())
+        self.scalar_mlp = nn.Sequential(nn.Linear(4, 32), nn.ReLU())
+
+        self.grid_size = 8
+        cnn_flat_size = 64 * self.grid_size * self.grid_size  # 64 * 64 = 4096
+
+        self.grid_size = 8
+        cnn_flat_size = 64 * self.grid_size * self.grid_size  # 64 * 64 = 4096
+
+        # 融合尺寸 = 4096 (网格特征) + 32 (标量特征) = 4128
+        self.fusion = nn.Sequential(nn.Linear(cnn_flat_size + 32, 256), nn.ReLU())
+
         self.value_stream = nn.Sequential(
             NoisyLinear(256, 128), nn.ReLU(), NoisyLinear(128, 1)
         )
@@ -154,27 +165,28 @@ class Transformer_DuelingDDQN(nn.Module):
     def forward(self, x):
         batch_size = x.size(0)
 
-        # 解析输入状态 (由环境打包好的)
-        # x 结构: [Tokens (max_dim * token_dim)] + [Scalars (4)]
-        tokens_flat_size = self.max_dim * self.token_dim
+        tokens_flat_size = (self.max_dim - 1) * self.token_dim
         tokens_flat = x[:, :tokens_flat_size]
         scalars = x[:, tokens_flat_size:]
 
-        # Reshape 为序列: (Batch, Seq_len, Feature_dim)
-        tokens = tokens_flat.view(batch_size, self.max_dim, self.token_dim)
+        # 直接将 tokens 转为图像张量 (Batch, 1, max_dim-1, max_dim)
+        cos_matrix = tokens_flat.view(batch_size, 1, self.max_dim - 1, self.token_dim)
 
-        # Transformer 处理
-        emb = self.embedding(tokens)
-        out_seq = self.transformer(emb)
+        col_feat = self.col_conv(cos_matrix)
+        row_feat = self.row_conv(cos_matrix)
+        concat_feat = torch.cat([col_feat, row_feat], dim=1)
+        fused_matrix = self.fuse_conv(concat_feat)
 
-        # 全局平均池化 (聚合所有基向量的信息)
-        seq_pooled = out_seq.mean(dim=1)
+        # 【核心修改 2】：使用网格池化，保留空间坐标信息！
+        # 无论输入多大，输出永远是 (Batch, 64, 8, 8)
+        grid_out = F.adaptive_max_pool2d(fused_matrix, (self.grid_size, self.grid_size))
+        
+        # 展平后大小永远是 Batch x 4096
+        cnn_out = grid_out.view(batch_size, -1)
+        
+        scalar_out = self.scalar_mlp(scalars)
 
-        # 标量处理
-        scalar_feat = self.scalar_mlp(scalars)
-
-        # 融合与输出
-        fused = torch.cat([seq_pooled, scalar_feat], dim=1)
+        fused = torch.cat([cnn_out, scalar_out], dim=1)
         feat = self.fusion(fused)
 
         v = self.value_stream(feat)
@@ -191,17 +203,17 @@ class Transformer_DuelingDDQN(nn.Module):
 # Agent
 # ------------------------------
 class DQNAgent:
-    def __init__(self, max_dim, state_dim, action_dim, batch_size=256):
+    def __init__(self, max_dim, state_dim, action_dim, batch_size=64):
         self.device = device
         self.batch_size = batch_size
-        self.q_net = Transformer_DuelingDDQN(max_dim, action_dim).to(self.device)
-        self.target_net = Transformer_DuelingDDQN(max_dim, action_dim).to(self.device)
+        self.q_net = AxialCNN_DuelingDDQN(max_dim, action_dim).to(self.device)
+        self.target_net = AxialCNN_DuelingDDQN(max_dim, action_dim).to(self.device)
         self.target_net.load_state_dict(self.q_net.state_dict())
         self.target_net.eval()
-        self.optimizer = optim.Adam(self.q_net.parameters(), lr=1e-4)
+        self.optimizer = optim.Adam(self.q_net.parameters(), lr=3e-4)
 
         # 【修改 1】：大幅减小回放池容量，防止内存溢出 (从 200000 降到 20000)
-        self.memory = deque(maxlen=50000)
+        self.memory = deque(maxlen=80000)
 
         self.gamma = 0.99
         self.tau = 0.005
@@ -239,7 +251,7 @@ class DQNAgent:
 
     def replay(self):
         if len(self.memory) < self.batch_size:
-            return 0.0
+            return 0.0, 0.0
         batch = random.sample(self.memory, self.batch_size)
         s, a, r, ns, d = zip(*batch)
 
@@ -263,13 +275,19 @@ class DQNAgent:
         curr_q = self.q_net(s).gather(1, a)
         loss = F.smooth_l1_loss(curr_q, target_q)
         loss.backward()
+
+        max_grad = 0.0
+        for p in self.q_net.parameters():
+            if p.grad is not None:
+                max_grad = max(max_grad, p.grad.abs().max().item())
+
         torch.nn.utils.clip_grad_norm_(self.q_net.parameters(), 0.75)
         self.optimizer.step()
 
         with torch.no_grad():
             for tp, p in zip(self.target_net.parameters(), self.q_net.parameters()):
                 tp.data.copy_(self.tau * p.data + (1.0 - self.tau) * tp.data)
-        return float(loss.item())
+        return float(loss.item()), float(max_grad)
 
 
 # ------------------------------
@@ -282,16 +300,15 @@ class LatticeEnv:
         self.max_dim = max_dim  # 用于网络输入的固定最大维度
         raw_matrix_str = matrix_to_string(self.initial_matrix_list)
 
-        # 增大 max_steps，因为现在是局部微操
         self.max_steps = math.ceil(self.dim * 1.5)
 
         self.alpha = 1.0
         self.ratio_w = 20.0
         self.gamma = 0.5
-        self.cost_w = 0.005
+        self.cost_w = 0.01
 
         # 动作空间：包含 beta 和 pos
-        self.betas = [10 + 4 * i for i in range(8)]
+        self.betas = [10 + 3 * i for i in range(9)]
         self.action_list = [
             (b, p) for b in self.betas if b <= self.dim for p in range(self.dim - b + 1)
         ]
@@ -316,7 +333,7 @@ class LatticeEnv:
         self.ratio_scale = max(abs(initial_log_ratio), 1.0)
 
         # 状态维度计算: (max_dim * (1 + max_dim)) + 4
-        self.state_dim = (self.max_dim * self.max_dim) + 4
+        self.state_dim = ((self.max_dim-1) * self.max_dim) + 4
 
         self.best_ratio = float("inf")
         self.best_vector = None
@@ -344,6 +361,7 @@ class LatticeEnv:
         max_cos = float(np.clip(np.max(lower) if lower.size > 0 else 0.0, 0.0, 1.0))
         min_cos = float(np.clip(np.min(lower) if lower.size > 0 else 0.0, 0.0, 1.0))
 
+        C=C+C.T
         rust_eval = my_project_backend.evaluate_state_rust(mat_str, 0, 0)
         gs_logs = np.array(rust_eval["gs_log_norms"], dtype=np.float32)
 
@@ -351,15 +369,15 @@ class LatticeEnv:
         log_defect = float(rust_info["log_prod"] - self.log_vol)
         log_ratio = float(log_b1 - self.log_GH)
 
-        # 使用动态因子归一化
         norm_log_defect = float(np.tanh(log_defect / self.defect_scale))
         norm_log_ratio = float(np.tanh(log_ratio / self.ratio_scale))
 
-        # 【构建 Transformer 序列状态】
-        tokens = np.zeros((self.max_dim, self.max_dim), dtype=np.float32)
-        for i in range(self.dim):
-            # 填入与之前向量的余弦夹角 (下三角部分)
-            tokens[i, :i] = C[i, :i]
+        tokens = np.zeros((self.max_dim - 1, self.max_dim), dtype=np.float32)
+        for i in range(self.dim - 1):
+            # 左半边：取第 i+1 行的下三角部分
+            tokens[i, :i+1] = C[i+1, :i+1]
+            # 右半边：取第 i 行的上三角部分
+            tokens[i, i+1:self.dim] = C[i, i+1:self.dim]
 
         tokens_flat = tokens.flatten()
         scalars = np.array(
@@ -415,22 +433,16 @@ class LatticeEnv:
         if new_ratio < self.best_ratio:
             breakthrough_bonus = 10.0
         elif new_ratio < self.current_ep_best_ratio:
-            breakthrough_bonus = 3.0  # 回合内突破，给高分
+            breakthrough_bonus = 2.0
             self.current_ep_best_ratio = new_ratio
 
-        # 2. 核心逻辑重构：按情况给分，杜绝混日子
-        if R_ratio > 1e-6:
-            base_reward = 15.0 * R_ratio 
-        elif R_ratio < -1e-6:
-            # 恶性动作：把原本的第一向量搞长了（质量变差），必须严惩！
-            base_reward = -0.5 + 5.0 * R_ratio 
-        else:
-            # 潜伏期动作：第一向量没变，这时候才看结构有没有改善（铺垫）
-            # 【关键】：加一个基础的 step penalty (-0.1)，防止模型原地疯狂刷无用步数
-            base_reward = -0.1 + 0.3 * R_global + 0.3 * R_cos
-
-        reward = base_reward - self.cost_w * beta + breakthrough_bonus
-        
+        reward = (
+            self.alpha * R_global
+            + self.ratio_w * R_ratio
+            + self.gamma * R_cos
+            - self.cost_w * beta
+            + breakthrough_bonus
+        )
         reward = float(np.clip(reward, -20.0, 50.0))
 
         info = {
@@ -522,7 +534,6 @@ class SubprocVecEnv:
 # ------------------------------
 # Main & Train
 # ------------------------------
-# 【修改细节 1】：在参数列表里加上 max_steps
 def train(
     vec_env,
     agent,
@@ -534,47 +545,49 @@ def train(
     save_dir="results",
 ):
     history = {"reward": [], "loss": [], "ratio_min": []}
-
-    # 初始化一个局部最优记录用于比较
     best_known_ratio = float("inf")
-
-    # 回合开始前，统一获取所有环境的初始状态
     states = vec_env.reset()
+
+    # 【新增】：跨 Episode 累积日志列表
+    accumulated_ep_logs = []
 
     for ep in range(1, episodes + 1):
         ep_rewards = np.zeros(num_envs)
         ep_ratios = []
         losses = []
 
-        # 【核心修改】：放弃 while 循环，直接使用 for 循环固定步数推进
-        # 因为所有环境每局固定走 max_steps 步，这样写最安全，绝不会出现进程脱节
-        for step in range(max_steps):
-            # 1. 神经网络根据当前状态输出动作
-            actions = agent.act_batch(states, is_training=True)
+        # 【新增】：记录当前 Episode 某一个环境的动作与梯度轨迹
+        ep_action_logs = []
 
-            # 2. 4个环境同时执行动作 (底层去调 C++ 的 pos, beta, LLL)
+        for step in range(max_steps):
+            actions = agent.act_batch(states, is_training=True)
             next_states, rewards, batch_dones, infos = vec_env.step(actions)
 
-            # 3. 收集经验并训练
+            step_max_grad = 0.0
+
+            # --- 步骤 A: 收集经验 (严格遵守 num_envs 长度) ---
             for i in range(num_envs):
                 agent.remember(
-                    states[i],
-                    actions[i],
-                    rewards[i],
-                    next_states[i],
-                    batch_dones[i],
+                    states[i], actions[i], rewards[i], next_states[i], batch_dones[i]
                 )
                 ep_rewards[i] += rewards[i]
                 ep_ratios.append(infos[i]["b1_GH_ratio"])
 
-            loss = agent.replay()
-            if loss != 0.0:
-                losses.append(loss)
+            # --- 步骤 B: 榨干 GPU 算力，多次训练 ---
+            # 删掉原本那个丧心病狂的循环，直接改成：
+            for _ in range(2):  # 走1步更新2次网络，UTD 约为 0.16，非常健康
+                loss, max_grad = agent.replay() 
+                if loss != 0.0:
+                    losses.append(loss)
+                    step_max_grad = max(step_max_grad, max_grad)
 
-            # 4. 状态滚动更新
+            # 【提取动作数据】：为了避免日志刷屏，我们只提取 Env 0 的数据展示
+            pos = infos[0]["pos"]
+            beta = infos[0]["beta"]
+            ep_action_logs.append(f"(p:{pos:2d}, b:{beta:2d}, g:{step_max_grad:.2f})")
+
             states = next_states
 
-        # 一个 Episode 结束后的日志统计
         avg_ep_reward = np.mean(ep_rewards)
         history["reward"].append(avg_ep_reward)
         history["loss"].append(float(np.mean(losses)) if losses else 0.0)
@@ -586,21 +599,32 @@ def train(
 
         if global_best_ratio < best_known_ratio:
             best_known_ratio = global_best_ratio
-            # 【修改处】：文件名加上维度，防止多维度依次训练时互相覆盖
-            model_path = os.path.join(save_dir, f"agent4best_model_dim{dim}.pth")
-            memory_path = os.path.join(save_dir, f"agent4best_memory_dim{dim}.pkl")
-
-            # 破纪录时，把模型和包含突破路径的优质经验池全存下来
+            model_path = os.path.join(save_dir, f"agent5_best_model_dim{dim}.pth")
+            memory_path = os.path.join(save_dir, f"agent5_best_memory_dim{dim}.pkl")
             agent.save_checkpoint(model_path, memory_path)
             print(
-                f"agent4HisBest find {global_best_ratio:.4f}! weight and memory backed up"
+                f"agent5HisBest find {global_best_ratio:.4f}! weight and memory backed up"
             )
 
         if ep % print_every == 0:
-            print(
-                f"Ep {ep:4d} | Avg R: {avg_ep_reward:9.3f} | Loss: {history['loss'][-1]:.4f} | "
-                f"Ep min ratio: {ep_min_ratio:.4f} | historical best ratio: {global_best_ratio:.4f}"
-            )
+            # 1. 打印动作轨迹
+            print(f"\n[{'=' * 15} Ep {ep} Trajectory (Env 0) {'=' * 15}]")
+            for idx in range(
+                0, len(ep_action_logs), 4
+            ):  # 每行打印 4 个动作步骤防止超出屏幕
+                print(" -> ".join(ep_action_logs[idx : idx + 4]))
+            print("-" * 55)
+
+            # 2. 生成当前 Ep 日志并加入累积列表
+            current_log = f"Ep {ep:4d} | Avg R: {avg_ep_reward:9.3f} | Loss: {history['loss'][-1]:7.4f} | Ep min ratio: {ep_min_ratio:.4f} | historical best: {global_best_ratio:.4f}"
+            accumulated_ep_logs.append(current_log)
+
+            # 3. 集中打印全部历史日志
+            print("\n=== Training History Log ===")
+            for log in accumulated_ep_logs:
+                print(log)
+            print("============================\n")
+
     return history
 
 
@@ -617,8 +641,8 @@ def run_experiment(dim, dataset_dir, results_dir, num_envs=4):
         max_dim=250, state_dim=temp_env.state_dim, action_dim=temp_env.num_actions
     )
 
-    model_path = os.path.join(results_dir, f"agent4best_model_dim{dim}.pth")
-    memory_path = os.path.join(results_dir, f"agent4best_memory_dim{dim}.pkl")
+    model_path = os.path.join(results_dir, f"agent5_best_model_dim{dim}.pth")
+    memory_path = os.path.join(results_dir, f"agent5_best_memory_dim{dim}.pkl")
     agent.load_checkpoint(model_path, memory_path)
 
     history = train(
@@ -691,4 +715,4 @@ if __name__ == "__main__":
 
     DIMS_TO_RUN = [68, 69, 70, 71, 72]
     for dim in DIMS_TO_RUN:
-        run_experiment(dim, DATASET_DIR, RESULTS_DIR, num_envs=8)
+        run_experiment(dim, DATASET_DIR, RESULTS_DIR, num_envs=12)
