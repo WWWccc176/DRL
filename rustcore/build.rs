@@ -19,12 +19,17 @@ fn main() {
     let mut build = cxx_build::bridge("src/lib.rs");
 
     build
-        .file("../src/bridge.cpp") // 编译我们刚写的纯 C++ 文件
+        .file("../src/bridge.cpp")
         .include("..")
         .flag_if_supported("-std=c++17")
-        .flag_if_supported("-O3"); // 开启优化
+        .flag_if_supported("-O3")
+        .flag_if_supported("-march=native")
+        .flag_if_supported("-mtune=native")
+        .flag_if_supported("-funroll-loops")
+        .flag_if_supported("-fomit-frame-pointer")
+        .flag_if_supported("-ffast-math")
+        .flag_if_supported("-flto");
 
-    // 3. 将 fplll 的头文件路径加进去
     for path in &fplll.include_paths {
         build.include(path);
     }
