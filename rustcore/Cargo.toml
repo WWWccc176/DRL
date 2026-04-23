@@ -20,7 +20,7 @@ pkg-config = "0.3"
 
 [profile.release]
 opt-level = 3
-lto = "fat"
+#lto = "fat"
 codegen-units = 1
 panic = "abort"
-strip = true
+#strip = true

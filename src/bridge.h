@@ -10,4 +10,4 @@
 struct ReductionResult;
 
 // 【修复这里】：在最后加上 int pos 参数，与 bridge.cpp 和 lib.rs 保持一致！
-ReductionResult run_reduction_core(rust::String matrix_str, rust::String method, int param, int pos);
+ReductionResult run_reduction_core(rust::String matrix_str, rust::String method, int32_t param, int32_t pos);

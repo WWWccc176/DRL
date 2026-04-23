@@ -27,8 +27,8 @@ fn main() {
         .flag_if_supported("-mtune=native")
         .flag_if_supported("-funroll-loops")
         .flag_if_supported("-fomit-frame-pointer")
-        .flag_if_supported("-ffast-math")
-        .flag_if_supported("-flto");
+        .flag_if_supported("-ffast-math");
+    //.flag_if_supported("-flto");
 
     for path in &fplll.include_paths {
         build.include(path);

@@ -378,14 +378,13 @@ ReductionResult run_reduction_core(rust::String matrix_str, rust::String method,
         lll_reduction(B, 0.99);
     } 
     else if (method_s == "LOCAL_BKZ") {
-        // 【核心逻辑】：局部块提取与约化 (Fool-proof 方法)
         int beta = param;
-        int actual_beta = std::min(beta, d - pos); // 防止越界
+        int actual_beta = std::min(beta, d - pos);
         
         if (actual_beta >= 2) {
             int cols = B.get_cols();
             
-            // 步骤 1: 将需要局部约化的 block 提取成一个独立的子矩阵
+            // 提取局部块
             MyMatrix B_local(actual_beta, cols);
             for (int i = 0; i < actual_beta; ++i) {
                 for (int j = 0; j < cols; ++j) {
@@ -393,12 +392,16 @@ ReductionResult run_reduction_core(rust::String matrix_str, rust::String method,
                 }
             }
             
-            // 步骤 2: 对这个子矩阵进行纯粹的标准 LLL 约化
-            // 这一步等价于在原矩阵局部应用了一次么模行变换 (Unimodular Row Operations)
-            // 调用最基础的重载，彻底规避 API 不兼容问题
+            // LLL 预处理
             lll_reduction(B_local, 0.99);
             
-            // 步骤 3: 将约化后的子矩阵塞回原矩阵
+            // BKZ 2.0 约化（带 Gaussian Heuristic 枚举半径）
+            if (actual_beta >= 4) {
+                int internal_beta = std::min(actual_beta, 40);
+                bkz_reduction(B_local, internal_beta, BKZ_AUTO_ABORT | BKZ_GH_BND);
+            }
+            
+            // 直接放回，不排序！BKZ 输出的顺序本身就是最优的
             for (int i = 0; i < actual_beta; ++i) {
                 for (int j = 0; j < cols; ++j) {
                     B[pos + i][j] = B_local[i][j];
@@ -406,7 +409,6 @@ ReductionResult run_reduction_core(rust::String matrix_str, rust::String method,
             }
         }
     }
-
     int rows = B.get_rows();
     int cols = B.get_cols();
     
