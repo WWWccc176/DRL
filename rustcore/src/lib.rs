@@ -440,6 +440,296 @@
 //    m.add_function(wrap_pyfunction!(evaluate_state_rust, m)?)?;
 //    Ok(())
 //}
+////use numpy::{PyArray1, PyArrayMethods};
+////use pyo3::prelude::*;
+////use pyo3::types::PyDict;
+////use rayon::prelude::*;
+////
+////#[cxx::bridge]
+////mod ffi {
+////    struct ReductionResult {
+////        matrix_str: String,
+////        rows: i32,
+////        cols: i32,
+////        flat_matrix: Vec<f64>,
+////        row_log_scales: Vec<f64>,
+////    }
+////    unsafe extern "C++" {
+////        include!("src/bridge.h");
+////        // 【修改】：增加 pos 参数
+////        fn run_reduction_core(
+////            matrix_str: String,
+////            method: String,
+////            param: i32,
+////            pos: i32,
+////        ) -> ReductionResult;
+////    }
+////}
+/////// 1. 解析并缩放矩阵 (防溢出核心)
+////pub fn parse_and_scale_matrix(matrix_str: &str) -> (Vec<Vec<f64>>, Vec<f64>) {
+////    let lines: Vec<&str> = matrix_str
+////        .lines()
+////        .filter(|l| !l.trim().is_empty())
+////        .collect();
+////
+////    let mut matrix: Vec<Vec<f64>> = lines
+////        .par_iter()
+////        .map(|line| {
+////            let clean_line = line.replace(['[', ']'], "");
+////            clean_line
+////                .split_whitespace()
+////                .filter_map(|s| s.parse::<f64>().ok())
+////                .collect()
+////        })
+////        .collect();
+////
+////    let m = matrix.len();
+////    let mut row_log_scales = vec![0.0; m];
+////
+////    for i in 0..m {
+////        let max_val = matrix[i].iter().map(|x| x.abs()).fold(0.0, f64::max);
+////        if max_val > 0.0 {
+////            row_log_scales[i] = max_val.ln();
+////            for x in &mut matrix[i] {
+////                *x /= max_val;
+////            }
+////        }
+////    }
+////    (matrix, row_log_scales)
+////}
+////
+/////// 2. 计算缩放后的范数、真实的 Log Prod 和 Min Log Norm
+////pub fn compute_norms_and_metrics(
+////    matrix: &[Vec<f64>],
+////    row_log_scales: &[f64],
+////) -> (Vec<f64>, f64, f64) {
+////    let n = matrix.len();
+////    let mut log_prod = 0.0;
+////    let mut min_log_norm = f64::INFINITY;
+////    let mut scaled_norms = vec![0.0; n];
+////
+////    for i in 0..n {
+////        let sq_norm: f64 = matrix[i].iter().map(|&x| x * x).sum();
+////        scaled_norms[i] = sq_norm.sqrt();
+////
+////        let true_log_norm = if sq_norm > 1e-300 {
+////            0.5 * sq_norm.ln() + row_log_scales[i]
+////        } else {
+////            -690.0
+////        };
+////
+////        log_prod += true_log_norm;
+////        if true_log_norm < min_log_norm {
+////            min_log_norm = true_log_norm;
+////        }
+////    }
+////    (scaled_norms, log_prod, min_log_norm)
+////}
+////
+/////// 3. 计算余弦相似度矩阵 (一维展平格式，利用多线程)
+////pub fn compute_cosine_matrix(matrix: &[Vec<f64>], scaled_norms: &[f64]) -> Vec<f64> {
+////    let n = matrix.len();
+////    (0..n)
+////        .into_par_iter()
+////        .flat_map(|i| {
+////            let mut row_cos = vec![0.0; n];
+////            for j in 0..i {
+////                let dot: f64 = matrix[i].iter().zip(&matrix[j]).map(|(a, b)| a * b).sum();
+////                let val = dot / (scaled_norms[i] * scaled_norms[j] + 1e-20);
+////                row_cos[j] = val.abs();
+////            }
+////            row_cos
+////        })
+////        .collect()
+////}
+////
+/////// 4. 计算 Gram-Schmidt 正交化 (GSO) 及其真实的 Log Norms
+////pub fn compute_gram_schmidt(
+////    matrix: &[Vec<f64>],
+////    row_log_scales: &[f64],
+////) -> (Vec<Vec<f64>>, Vec<f64>) {
+////    let m = matrix.len();
+////    let n = if m > 0 { matrix[0].len() } else { 0 };
+////
+////    let mut b_star = vec![vec![0.0; n]; m];
+////    let mut gs_log_norms = vec![0.0; m];
+////
+////    for i in 0..m {
+////        let mut v = matrix[i].clone();
+////        for j in 0..i {
+////            let denom: f64 = b_star[j].iter().map(|x| x * x).sum();
+////            if denom > 1e-300 {
+////                let dot: f64 = v.iter().zip(&b_star[j]).map(|(a, b)| a * b).sum();
+////                let mu = dot / denom;
+////                for k in 0..n {
+////                    v[k] -= mu * b_star[j][k];
+////                }
+////            }
+////        }
+////        b_star[i] = v.clone();
+////        let norm_sq: f64 = v.iter().map(|x| x * x).sum();
+////        gs_log_norms[i] = if norm_sq > 1e-300 {
+////            0.5 * norm_sq.ln() + row_log_scales[i]
+////        } else {
+////            -690.0
+////        };
+////    }
+////    (b_star, gs_log_norms)
+////}
+////
+/////// 5. 计算局部正交缺陷 (Local Defect)
+////pub fn compute_local_defect(
+////    matrix: &[Vec<f64>],
+////    row_log_scales: &[f64],
+////    pos: usize,
+////    beta: usize,
+////) -> f64 {
+////    let m = matrix.len();
+////    let n = if m > 0 { matrix[0].len() } else { 0 };
+////    let end = std::cmp::min(pos + beta, m);
+////
+////    if pos >= end {
+////        return 0.0;
+////    }
+////
+////    let sum_log_orig: f64 = (pos..end)
+////        .map(|i| {
+////            let sq: f64 = matrix[i].iter().map(|x| x * x).sum();
+////            if sq > 1e-300 {
+////                0.5 * sq.ln() + row_log_scales[i]
+////            } else {
+////                -690.0
+////            }
+////        })
+////        .sum();
+////
+////    let block_size = end - pos;
+////    let mut local_b_star = vec![vec![0.0; n]; block_size];
+////    let mut sum_log_gs = 0.0;
+////
+////    for i in 0..block_size {
+////        let mut v = matrix[pos + i].clone();
+////        for j in 0..i {
+////            let denom: f64 = local_b_star[j].iter().map(|x| x * x).sum();
+////            if denom > 1e-300 {
+////                let dot: f64 = v.iter().zip(&local_b_star[j]).map(|(a, b)| a * b).sum();
+////                let mu = dot / denom;
+////                for k in 0..n {
+////                    v[k] -= mu * local_b_star[j][k];
+////                }
+////            }
+////        }
+////        local_b_star[i] = v.clone();
+////        let norm_sq: f64 = v.iter().map(|x| x * x).sum();
+////        sum_log_gs += if norm_sq > 1e-300 {
+////            0.5 * norm_sq.ln() + row_log_scales[pos + i]
+////        } else {
+////            -690.0
+////        };
+////    }
+////
+////    sum_log_orig - sum_log_gs
+////}
+////
+////// =====================================================================
+////// 第二层：PyO3 接口层 (负责调用底层函数并打包给 Python)
+////// =====================================================================
+////#[pyfunction]
+////fn run_reduction_rust(
+////    py: Python,
+////    matrix_str: String,
+////    method: String,
+////    param: i32,
+////    pos: i32, // 【修改】：接收 Python 传来的 pos
+////) -> PyResult<PyObject> {
+////    // 传入 pos 给 C++
+////    let result = ffi::run_reduction_core(matrix_str, method, param, pos);
+////
+////    let n = result.rows as usize;
+////    let cols = result.cols as usize;
+////
+////    let mut matrix = Vec::with_capacity(n);
+////    let mut idx = 0;
+////    for _ in 0..n {
+////        let mut row = Vec::with_capacity(cols);
+////        for _ in 0..cols {
+////            row.push(result.flat_matrix[idx]);
+////            idx += 1;
+////        }
+////        matrix.push(row);
+////    }
+////    let row_log_scales = result.row_log_scales;
+////
+////    let (scaled_norms, log_prod, min_log_norm) =
+////        compute_norms_and_metrics(&matrix, &row_log_scales);
+////    let cos_flat = compute_cosine_matrix(&matrix, &scaled_norms);
+////
+////    let array_1d = PyArray1::from_vec(py, cos_flat);
+////    let cos_matrix_2d = array_1d.reshape((n, n))?;
+////
+////    let dict = PyDict::new(py);
+////    dict.set_item("matrix_str", result.matrix_str)?;
+////    dict.set_item("log_prod", log_prod)?;
+////    dict.set_item("min_norm", min_log_norm.exp())?;
+////    dict.set_item("cos_matrix", cos_matrix_2d)?;
+////
+////    Ok(dict.into())
+////}
+////
+////#[pyfunction]
+////fn evaluate_state_rust(
+////    py: Python,
+////    matrix_str: String,
+////    pos: usize,
+////    beta: usize,
+////) -> PyResult<PyObject> {
+////    // 1. 解析
+////    let (matrix, row_log_scales) = parse_and_scale_matrix(&matrix_str);
+////
+////    if matrix.is_empty() {
+////        return Ok(PyDict::new(py).into());
+////    }
+////
+////    // 2. 调用纯 Rust 函数计算 GSO 和 Defect
+////    let (_, gs_log_norms) = compute_gram_schmidt(&matrix, &row_log_scales);
+////    let local_log_defect = compute_local_defect(&matrix, &row_log_scales, pos, beta);
+////
+////    // 3. 转换为 Python 对象
+////    let gs_array = PyArray1::from_vec(py, gs_log_norms);
+////    let dict = PyDict::new(py);
+////    dict.set_item("gs_log_norms", gs_array)?;
+////    dict.set_item("local_log_defect", local_log_defect)?;
+////
+////    Ok(dict.into())
+////}
+////
+////// =====================================================================
+////// 附加：如果你想在 Python 中单独调用这些拆分出来的纯数学功能，可以暴露它们
+////// =====================================================================
+////
+////#[pyfunction]
+////fn compute_cosine_only_rust(py: Python, matrix_str: String) -> PyResult<PyObject> {
+////    let (matrix, row_log_scales) = parse_and_scale_matrix(&matrix_str);
+////    let (scaled_norms, _, _) = compute_norms_and_metrics(&matrix, &row_log_scales);
+////    let cos_flat = compute_cosine_matrix(&matrix, &scaled_norms);
+////
+////    let n = matrix.len();
+////    let array_1d = PyArray1::from_vec(py, cos_flat);
+////    let cos_matrix_2d = array_1d.reshape((n, n))?;
+////    Ok(cos_matrix_2d.into_any().unbind())
+////}
+////
+////#[pymodule]
+////fn my_project_backend(m: &Bound<'_, PyModule>) -> PyResult<()> {
+////    // 原有的核心接口
+////    m.add_function(wrap_pyfunction!(run_reduction_rust, m)?)?;
+////    m.add_function(wrap_pyfunction!(evaluate_state_rust, m)?)?;
+////
+////    // 暴露单独的工具函数给 Python (可选)
+////    m.add_function(wrap_pyfunction!(compute_cosine_only_rust, m)?)?;
+////
+////    Ok(())
+////}
 use numpy::{PyArray1, PyArrayMethods};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -448,57 +738,27 @@ use rayon::prelude::*;
 #[cxx::bridge]
 mod ffi {
     struct ReductionResult {
-        matrix_str: String,
         rows: i32,
         cols: i32,
         flat_matrix: Vec<f64>,
         row_log_scales: Vec<f64>,
     }
+
     unsafe extern "C++" {
         include!("src/bridge.h");
-        // 【修改】：增加 pos 参数
-        fn run_reduction_core(
-            matrix_str: String,
-            method: String,
-            param: i32,
-            pos: i32,
-        ) -> ReductionResult;
+
+        // 池 API
+        fn pool_create(matrix_str: String) -> i64;
+        fn pool_create_lll(matrix_str: String) -> i64;
+        fn pool_reduce(id: i64, method: String, param: i32, pos: i32) -> ReductionResult;
+        fn pool_dump(id: i64) -> String;
+        fn pool_free(id: i64);
+        fn pool_clone(id: i64) -> i64;
     }
 }
-/// 1. 解析并缩放矩阵 (防溢出核心)
-pub fn parse_and_scale_matrix(matrix_str: &str) -> (Vec<Vec<f64>>, Vec<f64>) {
-    let lines: Vec<&str> = matrix_str
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .collect();
 
-    let mut matrix: Vec<Vec<f64>> = lines
-        .par_iter()
-        .map(|line| {
-            let clean_line = line.replace(['[', ']'], "");
-            clean_line
-                .split_whitespace()
-                .filter_map(|s| s.parse::<f64>().ok())
-                .collect()
-        })
-        .collect();
+// ==================== 纯 Rust 计算函数（不变）====================
 
-    let m = matrix.len();
-    let mut row_log_scales = vec![0.0; m];
-
-    for i in 0..m {
-        let max_val = matrix[i].iter().map(|x| x.abs()).fold(0.0, f64::max);
-        if max_val > 0.0 {
-            row_log_scales[i] = max_val.ln();
-            for x in &mut matrix[i] {
-                *x /= max_val;
-            }
-        }
-    }
-    (matrix, row_log_scales)
-}
-
-/// 2. 计算缩放后的范数、真实的 Log Prod 和 Min Log Norm
 pub fn compute_norms_and_metrics(
     matrix: &[Vec<f64>],
     row_log_scales: &[f64],
@@ -507,17 +767,14 @@ pub fn compute_norms_and_metrics(
     let mut log_prod = 0.0;
     let mut min_log_norm = f64::INFINITY;
     let mut scaled_norms = vec![0.0; n];
-
     for i in 0..n {
         let sq_norm: f64 = matrix[i].iter().map(|&x| x * x).sum();
         scaled_norms[i] = sq_norm.sqrt();
-
         let true_log_norm = if sq_norm > 1e-300 {
             0.5 * sq_norm.ln() + row_log_scales[i]
         } else {
             -690.0
         };
-
         log_prod += true_log_norm;
         if true_log_norm < min_log_norm {
             min_log_norm = true_log_norm;
@@ -526,7 +783,6 @@ pub fn compute_norms_and_metrics(
     (scaled_norms, log_prod, min_log_norm)
 }
 
-/// 3. 计算余弦相似度矩阵 (一维展平格式，利用多线程)
 pub fn compute_cosine_matrix(matrix: &[Vec<f64>], scaled_norms: &[f64]) -> Vec<f64> {
     let n = matrix.len();
     (0..n)
@@ -543,17 +799,14 @@ pub fn compute_cosine_matrix(matrix: &[Vec<f64>], scaled_norms: &[f64]) -> Vec<f
         .collect()
 }
 
-/// 4. 计算 Gram-Schmidt 正交化 (GSO) 及其真实的 Log Norms
 pub fn compute_gram_schmidt(
     matrix: &[Vec<f64>],
     row_log_scales: &[f64],
 ) -> (Vec<Vec<f64>>, Vec<f64>) {
     let m = matrix.len();
     let n = if m > 0 { matrix[0].len() } else { 0 };
-
     let mut b_star = vec![vec![0.0; n]; m];
     let mut gs_log_norms = vec![0.0; m];
-
     for i in 0..m {
         let mut v = matrix[i].clone();
         for j in 0..i {
@@ -577,77 +830,11 @@ pub fn compute_gram_schmidt(
     (b_star, gs_log_norms)
 }
 
-/// 5. 计算局部正交缺陷 (Local Defect)
-pub fn compute_local_defect(
-    matrix: &[Vec<f64>],
-    row_log_scales: &[f64],
-    pos: usize,
-    beta: usize,
-) -> f64 {
-    let m = matrix.len();
-    let n = if m > 0 { matrix[0].len() } else { 0 };
-    let end = std::cmp::min(pos + beta, m);
+// ==================== 公用辅助：从 ReductionResult 构建 matrix ====================
 
-    if pos >= end {
-        return 0.0;
-    }
-
-    let sum_log_orig: f64 = (pos..end)
-        .map(|i| {
-            let sq: f64 = matrix[i].iter().map(|x| x * x).sum();
-            if sq > 1e-300 {
-                0.5 * sq.ln() + row_log_scales[i]
-            } else {
-                -690.0
-            }
-        })
-        .sum();
-
-    let block_size = end - pos;
-    let mut local_b_star = vec![vec![0.0; n]; block_size];
-    let mut sum_log_gs = 0.0;
-
-    for i in 0..block_size {
-        let mut v = matrix[pos + i].clone();
-        for j in 0..i {
-            let denom: f64 = local_b_star[j].iter().map(|x| x * x).sum();
-            if denom > 1e-300 {
-                let dot: f64 = v.iter().zip(&local_b_star[j]).map(|(a, b)| a * b).sum();
-                let mu = dot / denom;
-                for k in 0..n {
-                    v[k] -= mu * local_b_star[j][k];
-                }
-            }
-        }
-        local_b_star[i] = v.clone();
-        let norm_sq: f64 = v.iter().map(|x| x * x).sum();
-        sum_log_gs += if norm_sq > 1e-300 {
-            0.5 * norm_sq.ln() + row_log_scales[pos + i]
-        } else {
-            -690.0
-        };
-    }
-
-    sum_log_orig - sum_log_gs
-}
-
-// =====================================================================
-// 第二层：PyO3 接口层 (负责调用底层函数并打包给 Python)
-// =====================================================================
-#[pyfunction]
-fn run_reduction_rust(
-    py: Python,
-    matrix_str: String,
-    method: String,
-    param: i32,
-    pos: i32, // 【修改】：接收 Python 传来的 pos
-) -> PyResult<PyObject> {
-    // 传入 pos 给 C++
-    let result = ffi::run_reduction_core(matrix_str, method, param, pos);
-
+fn result_to_matrix(result: &ffi::ReductionResult) -> (Vec<Vec<f64>>, Vec<f64>) {
     let n = result.rows as usize;
     let cols = result.cols as usize;
-
     let mut matrix = Vec::with_capacity(n);
     let mut idx = 0;
     for _ in 0..n {
@@ -658,75 +845,116 @@ fn run_reduction_rust(
         }
         matrix.push(row);
     }
-    let row_log_scales = result.row_log_scales;
+    let row_log_scales: Vec<f64> = result.row_log_scales.iter().copied().collect();
+    (matrix, row_log_scales)
+}
 
+// ==================== PyO3 接口（新池 API）====================
+
+#[pyfunction]
+fn create_matrix_rust(_py: Python, matrix_str: String) -> PyResult<i64> {
+    Ok(ffi::pool_create(matrix_str))
+}
+
+#[pyfunction]
+fn create_matrix_lll_rust(_py: Python, matrix_str: String) -> PyResult<i64> {
+    Ok(ffi::pool_create_lll(matrix_str))
+}
+
+#[pyfunction]
+fn reduce_rust(
+    py: Python,
+    matrix_id: i64,
+    method: String,
+    param: i32,
+    pos: i32,
+) -> PyResult<PyObject> {
+    let result = ffi::pool_reduce(matrix_id, method, param, pos);
+    let n = result.rows as usize;
+
+    let (matrix, row_log_scales) = result_to_matrix(&result);
     let (scaled_norms, log_prod, min_log_norm) =
         compute_norms_and_metrics(&matrix, &row_log_scales);
     let cos_flat = compute_cosine_matrix(&matrix, &scaled_norms);
 
-    let array_1d = PyArray1::from_vec(py, cos_flat);
-    let cos_matrix_2d = array_1d.reshape((n, n))?;
+    let cos_matrix_2d = PyArray1::from_vec(py, cos_flat).reshape((n, n))?;
 
     let dict = PyDict::new(py);
-    dict.set_item("matrix_str", result.matrix_str)?;
     dict.set_item("log_prod", log_prod)?;
     dict.set_item("min_norm", min_log_norm.exp())?;
     dict.set_item("cos_matrix", cos_matrix_2d)?;
-
     Ok(dict.into())
 }
 
 #[pyfunction]
-fn evaluate_state_rust(
-    py: Python,
-    matrix_str: String,
-    pos: usize,
-    beta: usize,
-) -> PyResult<PyObject> {
-    // 1. 解析
-    let (matrix, row_log_scales) = parse_and_scale_matrix(&matrix_str);
-
-    if matrix.is_empty() {
-        return Ok(PyDict::new(py).into());
-    }
-
-    // 2. 调用纯 Rust 函数计算 GSO 和 Defect
+fn evaluate_matrix_rust(py: Python, matrix_id: i64) -> PyResult<PyObject> {
+    // 用一次"空"reduce 获取当前矩阵数据，不修改矩阵
+    // 更好的做法：加一个 pool_extract 函数，这里用 dump + parse
+    let mat_str: String = ffi::pool_dump(matrix_id).to_string();
+    let (matrix, row_log_scales) = crate::parse_and_scale_matrix(&mat_str);
     let (_, gs_log_norms) = compute_gram_schmidt(&matrix, &row_log_scales);
-    let local_log_defect = compute_local_defect(&matrix, &row_log_scales, pos, beta);
-
-    // 3. 转换为 Python 对象
     let gs_array = PyArray1::from_vec(py, gs_log_norms);
     let dict = PyDict::new(py);
     dict.set_item("gs_log_norms", gs_array)?;
-    dict.set_item("local_log_defect", local_log_defect)?;
-
     Ok(dict.into())
 }
 
-// =====================================================================
-// 附加：如果你想在 Python 中单独调用这些拆分出来的纯数学功能，可以暴露它们
-// =====================================================================
+#[pyfunction]
+fn dump_matrix_rust(_py: Python, matrix_id: i64) -> PyResult<String> {
+    Ok(ffi::pool_dump(matrix_id).to_string())
+}
 
 #[pyfunction]
-fn compute_cosine_only_rust(py: Python, matrix_str: String) -> PyResult<PyObject> {
-    let (matrix, row_log_scales) = parse_and_scale_matrix(&matrix_str);
-    let (scaled_norms, _, _) = compute_norms_and_metrics(&matrix, &row_log_scales);
-    let cos_flat = compute_cosine_matrix(&matrix, &scaled_norms);
-
-    let n = matrix.len();
-    let array_1d = PyArray1::from_vec(py, cos_flat);
-    let cos_matrix_2d = array_1d.reshape((n, n))?;
-    Ok(cos_matrix_2d.into_any().unbind())
+fn free_matrix_rust(_py: Python, matrix_id: i64) -> PyResult<()> {
+    ffi::pool_free(matrix_id);
+    Ok(())
 }
+
+#[pyfunction]
+fn clone_matrix_rust(_py: Python, matrix_id: i64) -> PyResult<i64> {
+    Ok(ffi::pool_clone(matrix_id))
+}
+
+/// 解析字符串版（保留给 evaluate_matrix_rust 内部用）
+pub fn parse_and_scale_matrix(matrix_str: &str) -> (Vec<Vec<f64>>, Vec<f64>) {
+    let lines: Vec<&str> = matrix_str
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .collect();
+    let mut matrix: Vec<Vec<f64>> = lines
+        .par_iter()
+        .map(|line| {
+            let clean_line = line.replace(['[', ']'], "");
+            clean_line
+                .split_whitespace()
+                .filter_map(|s| s.parse::<f64>().ok())
+                .collect()
+        })
+        .collect();
+    let m = matrix.len();
+    let mut row_log_scales = vec![0.0; m];
+    for i in 0..m {
+        let max_val = matrix[i].iter().map(|x| x.abs()).fold(0.0, f64::max);
+        if max_val > 0.0 {
+            row_log_scales[i] = max_val.ln();
+            for x in &mut matrix[i] {
+                *x /= max_val;
+            }
+        }
+    }
+    (matrix, row_log_scales)
+}
+
+// ==================== 模块注册 ====================
 
 #[pymodule]
 fn my_project_backend(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    // 原有的核心接口
-    m.add_function(wrap_pyfunction!(run_reduction_rust, m)?)?;
-    m.add_function(wrap_pyfunction!(evaluate_state_rust, m)?)?;
-
-    // 暴露单独的工具函数给 Python (可选)
-    m.add_function(wrap_pyfunction!(compute_cosine_only_rust, m)?)?;
-
+    m.add_function(wrap_pyfunction!(create_matrix_rust, m)?)?;
+    m.add_function(wrap_pyfunction!(create_matrix_lll_rust, m)?)?;
+    m.add_function(wrap_pyfunction!(reduce_rust, m)?)?;
+    m.add_function(wrap_pyfunction!(evaluate_matrix_rust, m)?)?;
+    m.add_function(wrap_pyfunction!(dump_matrix_rust, m)?)?;
+    m.add_function(wrap_pyfunction!(free_matrix_rust, m)?)?;
+    m.add_function(wrap_pyfunction!(clone_matrix_rust, m)?)?;
     Ok(())
 }

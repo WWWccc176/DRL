@@ -331,25 +331,175 @@
 //        row_log_scales
 //    };
 //}
+//#include "bridge.h"
+//#include "rustcore/src/lib.rs.h"
+//#include <fplll/fplll.h>
+//#include <sstream>
+//#include <cmath>
+//#include <vector>
+//#include <algorithm>
+//#include <fplll/bkz_param.h>
+//
+//using namespace fplll;
+//using MyMatrix = ZZ_mat<mpz_t>;
+//
+//MyMatrix parse_matrix_core(const std::string& input_str) {
+//    MyMatrix B;
+//    std::stringstream ss(input_str);
+//    ss >> B; 
+//    return B;
+//}
+//
+//std::string dump_matrix_core(MyMatrix& B) {
+//    std::stringstream ss;
+//    ss << "[";
+//    for (int i = 0; i < B.get_rows(); ++i) {
+//        ss << "[";
+//        for (int j = 0; j < B.get_cols(); ++j) {
+//            ss << B[i][j];
+//            if (j + 1 < B.get_cols()) ss << " ";
+//        }
+//        ss << "]";
+//        if (i + 1 < B.get_rows()) ss << "\n";
+//    }
+//    ss << "]";
+//    return ss.str();
+//}
+//
+//ReductionResult run_reduction_core(rust::String matrix_str, rust::String method, int param, int pos) {
+//    std::string matrix_s(matrix_str);
+//    std::string method_s(method);
+//    
+//    MyMatrix B = parse_matrix_core(matrix_s);
+//    int d = B.get_rows();
+//    
+//    // 1. 执行约化算法
+//    if (method_s == "LLL") {
+//        lll_reduction(B, 0.99);
+//    } 
+//    else if (method_s == "LOCAL_BKZ") {
+//        int beta = param;
+//        int actual_beta = std::min(beta, d - pos);
+//        
+//        if (actual_beta >= 2) {
+//            int cols = B.get_cols();
+//            
+//            // 提取局部块
+//            MyMatrix B_local(actual_beta, cols);
+//            for (int i = 0; i < actual_beta; ++i) {
+//                for (int j = 0; j < cols; ++j) {
+//                    B_local[i][j] = B[pos + i][j];
+//                }
+//            }
+//            
+//            // LLL pre-reduction
+//            lll_reduction(B_local, 0.99);
+//            
+//            // BKZ 2.0
+//                        // BKZ 2.0
+//            if (actual_beta >= 4) {
+//                int internal_beta = std::min(actual_beta, 100);
+//
+//                // ★ 必须先创建 strategies 变量（空即可，fplll 会用默认枚举）
+//                vector<Strategy> strategies;
+//                BKZParam bkz_param(internal_beta, strategies);
+//                bkz_param.flags = BKZ_AUTO_ABORT | BKZ_GH_BND;
+//                if (internal_beta <= 20) {
+//                    bkz_param.gh_factor = 1.1;
+//                    bkz_param.max_loops = 4;
+//                } else if (internal_beta <= 35) {
+//                    bkz_param.gh_factor = 1.05;
+//                    bkz_param.max_loops = 8;
+//                } else {
+//                    bkz_param.gh_factor = 1.0;
+//                    bkz_param.max_loops = 16;
+//                }
+//    
+//    bkz_reduction(&B_local, NULL, bkz_param);            }
+//            for (int i = 0; i < actual_beta; ++i) {
+//                for (int j = 0; j < cols; ++j) {
+//                    B[pos + i][j] = B_local[i][j];
+//                }
+//            }
+//        }
+//    }
+//    int rows = B.get_rows();
+//    int cols = B.get_cols();
+//    
+//    rust::Vec<double> flat_matrix;
+//    rust::Vec<double> row_log_scales;
+//    flat_matrix.reserve(rows * cols);
+//    row_log_scales.reserve(rows);
+//
+//    const double LOG2 = 0.6931471805599453;
+//
+//    for (int i = 0; i < rows; ++i) {
+//        double max_log_val = -1e300;
+//        std::vector<double> temp_mantissas(cols, 0.0);
+//        std::vector<double> temp_logs(cols, -1e300);
+//
+//        for (int j = 0; j < cols; ++j) {
+//            long exp = 0;
+//            double mantissa = mpz_get_d_2exp(&exp, B[i][j].get_data());
+//            if (mantissa != 0.0) {
+//                double log_val = std::log(std::abs(mantissa)) + exp * LOG2;
+//                temp_logs[j] = log_val;
+//                temp_mantissas[j] = mantissa;
+//                if (log_val > max_log_val) {
+//                    max_log_val = log_val;
+//                }
+//            }
+//        }
+//
+//        row_log_scales.push_back(max_log_val > -1e299 ? max_log_val : 0.0);
+//
+//        for (int j = 0; j < cols; ++j) {
+//            if (temp_logs[j] > -1e299) {
+//                double diff = temp_logs[j] - max_log_val;
+//                double sign = temp_mantissas[j] > 0 ? 1.0 : -1.0;
+//                flat_matrix.push_back(sign * std::exp(diff));
+//            } else {
+//                flat_matrix.push_back(0.0);
+//            }
+//        }
+//    }
+//
+//    return ReductionResult {
+//        rust::String(dump_matrix_core(B)), 
+//        rows,
+//        cols,
+//        flat_matrix,
+//        row_log_scales
+//    };
+//}
 #include "bridge.h"
 #include "rustcore/src/lib.rs.h"
 #include <fplll/fplll.h>
 #include <sstream>
 #include <cmath>
 #include <vector>
+#include <unordered_map>
+#include <mutex>
 #include <algorithm>
+#include <fplll/bkz_param.h>
 
 using namespace fplll;
 using MyMatrix = ZZ_mat<mpz_t>;
 
-MyMatrix parse_matrix_core(const std::string& input_str) {
+// ==================== 矩阵池 ====================
+static std::unordered_map<int64_t, MyMatrix> g_pool;
+static int64_t g_next_id = 0;
+static std::mutex g_pool_mutex;  // 多线程安全（虽然每个进程独立，保险起见）
+
+// ==================== 内部工具 ====================
+static MyMatrix parse_matrix_core(const std::string& input_str) {
     MyMatrix B;
     std::stringstream ss(input_str);
-    ss >> B; 
+    ss >> B;
     return B;
 }
 
-std::string dump_matrix_core(MyMatrix& B) {
+static std::string dump_matrix_core(const MyMatrix& B) {
     std::stringstream ss;
     ss << "[";
     for (int i = 0; i < B.get_rows(); ++i) {
@@ -365,50 +515,8 @@ std::string dump_matrix_core(MyMatrix& B) {
     return ss.str();
 }
 
-// 【修改】：增加 pos 参数
-ReductionResult run_reduction_core(rust::String matrix_str, rust::String method, int param, int pos) {
-    std::string matrix_s(matrix_str);
-    std::string method_s(method);
-    
-    MyMatrix B = parse_matrix_core(matrix_s);
-    int d = B.get_rows();
-    
-    // 1. 执行约化算法
-    if (method_s == "LLL") {
-        lll_reduction(B, 0.99);
-    } 
-    else if (method_s == "LOCAL_BKZ") {
-        int beta = param;
-        int actual_beta = std::min(beta, d - pos);
-        
-        if (actual_beta >= 2) {
-            int cols = B.get_cols();
-            
-            // 提取局部块
-            MyMatrix B_local(actual_beta, cols);
-            for (int i = 0; i < actual_beta; ++i) {
-                for (int j = 0; j < cols; ++j) {
-                    B_local[i][j] = B[pos + i][j];
-                }
-            }
-            
-            // LLL 预处理
-            lll_reduction(B_local, 0.99);
-            
-            // BKZ 2.0 约化（带 Gaussian Heuristic 枚举半径）
-            if (actual_beta >= 4) {
-                int internal_beta = std::min(actual_beta, 40);
-                bkz_reduction(B_local, internal_beta, BKZ_AUTO_ABORT | BKZ_GH_BND);
-            }
-            
-            // 直接放回，不排序！BKZ 输出的顺序本身就是最优的
-            for (int i = 0; i < actual_beta; ++i) {
-                for (int j = 0; j < cols; ++j) {
-                    B[pos + i][j] = B_local[i][j];
-                }
-            }
-        }
-    }
+// 从矩阵提取浮点数据（公用）
+static ReductionResult extract_float_data(const MyMatrix& B) {
     int rows = B.get_rows();
     int cols = B.get_cols();
     
@@ -431,9 +539,7 @@ ReductionResult run_reduction_core(rust::String matrix_str, rust::String method,
                 double log_val = std::log(std::abs(mantissa)) + exp * LOG2;
                 temp_logs[j] = log_val;
                 temp_mantissas[j] = mantissa;
-                if (log_val > max_log_val) {
-                    max_log_val = log_val;
-                }
+                if (log_val > max_log_val) max_log_val = log_val;
             }
         }
 
@@ -450,11 +556,122 @@ ReductionResult run_reduction_core(rust::String matrix_str, rust::String method,
         }
     }
 
-    return ReductionResult {
-        rust::String(dump_matrix_core(B)), 
-        rows,
-        cols,
-        flat_matrix,
-        row_log_scales
-    };
+    return ReductionResult{rows, cols, std::move(flat_matrix), std::move(row_log_scales)};
+}
+
+// 对矩阵执行约化（原地修改）
+static void do_reduction(MyMatrix& B, const std::string& method, int param, int pos) {
+    int d = B.get_rows();
+
+    if (method == "LLL") {
+        lll_reduction(B, 0.99);
+    }
+    else if (method == "LOCAL_BKZ") {
+        int beta = param;
+        int actual_beta = std::min(beta, d - pos);
+
+        if (actual_beta >= 2) {
+            int cols = B.get_cols();
+
+            // 提取局部块
+            MyMatrix B_local(actual_beta, cols);
+            for (int i = 0; i < actual_beta; ++i)
+                for (int j = 0; j < cols; ++j)
+                    B_local[i][j] = B[pos + i][j];
+
+            // LLL 预处理
+            lll_reduction(B_local, 0.99);
+
+            // BKZ 2.0
+            if (actual_beta >= 4) {
+                int internal_beta = std::min(actual_beta, 100);
+
+                // 加载 fplll 默认策略
+                std::vector<Strategy> strategies;
+                try {
+                    strategies = load_strategies_json(FPLLL_DEFAULT_STRATEGY);
+                } catch (...) {
+                    // 若策略文件不存在，用空策略（回退到暴力枚举）
+                }
+
+                BKZParam bkz_param(internal_beta, strategies);
+                bkz_param.flags = BKZ_AUTO_ABORT | BKZ_GH_BND;
+
+                if (internal_beta <= 20) {
+                    bkz_param.gh_factor = 1.1;
+                    bkz_param.max_loops = 4;
+                } else if (internal_beta <= 35) {
+                    bkz_param.gh_factor = 1.05;
+                    bkz_param.max_loops = 8;
+                } else {
+                    bkz_param.gh_factor = 1.0;
+                    bkz_param.max_loops = 16;
+                }
+
+                bkz_reduction(&B_local, NULL, bkz_param);
+            }
+
+            // 写回
+            for (int i = 0; i < actual_beta; ++i)
+                for (int j = 0; j < cols; ++j)
+                    B[pos + i][j] = B_local[i][j];
+        }
+    }
+}
+
+// ==================== 池 API 实现 ====================
+
+int64_t pool_create(rust::String matrix_str) {
+    std::lock_guard<std::mutex> lock(g_pool_mutex);
+    int64_t id = g_next_id++;
+    g_pool[id] = parse_matrix_core(std::string(matrix_str));
+    return id;
+}
+
+int64_t pool_create_lll(rust::String matrix_str) {
+    std::lock_guard<std::mutex> lock(g_pool_mutex);
+    int64_t id = g_next_id++;
+    g_pool[id] = parse_matrix_core(std::string(matrix_str));
+    lll_reduction(g_pool[id], 0.99);
+    return id;
+}
+
+ReductionResult pool_reduce(int64_t id, rust::String method, int32_t param, int32_t pos) {
+    std::lock_guard<std::mutex> lock(g_pool_mutex);
+    auto it = g_pool.find(id);
+    if (it == g_pool.end()) {
+        // 返回空结果
+        return ReductionResult{0, 0, {}, {}};
+    }
+    MyMatrix& B = it->second;
+    do_reduction(B, std::string(method), param, pos);
+    return extract_float_data(B);
+}
+
+rust::String pool_dump(int64_t id) {
+    std::lock_guard<std::mutex> lock(g_pool_mutex);
+    auto it = g_pool.find(id);
+    if (it == g_pool.end()) return rust::String("");
+    return rust::String(dump_matrix_core(it->second));
+}
+
+void pool_free(int64_t id) {
+    std::lock_guard<std::mutex> lock(g_pool_mutex);
+    g_pool.erase(id);
+}
+
+int64_t pool_clone(int64_t id) {
+    std::lock_guard<std::mutex> lock(g_pool_mutex);
+    auto it = g_pool.find(id);
+    if (it == g_pool.end()) return -1;
+
+    int64_t new_id = g_next_id++;
+    int rows = it->second.get_rows();
+    int cols = it->second.get_cols();
+    MyMatrix B_copy(rows, cols);
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < cols; ++j)
+            B_copy[i][j] = it->second[i][j];
+    g_pool[new_id] = std::move(B_copy);
+    return new_id;
 }

@@ -1,6 +1,6 @@
 # 改进：1.
 import my_project_backend
-import os, sys, math, time, random, re, pickle
+import os, sys, math, time, random
 import numpy as np
 
 os.environ["OMP_NUM_THREADS"] = "4"  # 控制 OpenMP 线程数
@@ -12,7 +12,6 @@ import torch.optim as optim
 
 torch.set_num_threads(4)
 import matplotlib.pyplot as plt
-from collections import deque
 import multiprocessing as mp
 
 # ------------------------------
@@ -26,7 +25,7 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("✅ Using device:", device)
+print("Using device:", device)
 
 
 def matrix_to_string(basis):
@@ -110,46 +109,117 @@ class NoisyLinear(nn.Module):
         return F.linear(x, self.weight_mu, self.bias_mu)
 
 
+class SE_Block(nn.Module):
+    """Squeeze-and-Excitation: 全局通道注意力"""
+
+    def __init__(self, channels, reduction=4):
+        super().__init__()
+        self.fc = nn.Sequential(
+            nn.Linear(channels, channels // reduction),
+            nn.ReLU(),
+            nn.Linear(channels // reduction, channels),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        b, c, h, w = x.size()
+        y = x.view(b, c, -1).mean(dim=2)
+        y = self.fc(y).view(b, c, 1, 1)
+        return x * y
+
+
 class AxialCNN_DuelingDDQN(nn.Module):
     def __init__(self, max_dim, action_dim):
         super().__init__()
         self.max_dim = max_dim
-        self.token_dim = max_dim  # 移除 GS，只剩 max_dim (余弦矩阵行维度)
+        self.token_dim = max_dim
 
-        # 分支 A: 沿列扫描 (引入空洞卷积，感受野扩大至 33x1)
+        # ---- 维度自适应空洞率 ----
+        if max_dim <= 32:
+            dilations = [1, 2, 4]  # 感受野 29
+        elif max_dim <= 64:
+            dilations = [1, 3, 9]  # 感受野 53
+        elif max_dim <= 128:
+            dilations = [1, 4, 16]  # 感受野 85
+        else:
+            dilations = [1, 6, 24]  # 感受野 125
+
+        # ---- 分支 A: 沿列（垂直）----
         self.col_conv = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=(5, 1), padding=(2, 0)),
+            nn.Conv2d(1, 32, kernel_size=(5, 1), padding=(2, 0)),
             nn.LeakyReLU(0.01),
-            nn.Conv2d(16, 32, kernel_size=(5, 1), padding=(4, 0), dilation=(2, 1)),
+            nn.Conv2d(
+                32,
+                64,
+                kernel_size=(5, 1),
+                padding=(dilations[1] * 2, 0),
+                dilation=(dilations[1], 1),
+            ),
             nn.LeakyReLU(0.01),
-            nn.Conv2d(32, 64, kernel_size=(5, 1), padding=(8, 0), dilation=(4, 1)),
+            nn.Conv2d(
+                64,
+                128,
+                kernel_size=(5, 1),
+                padding=(dilations[2] * 2, 0),
+                dilation=(dilations[2], 1),
+            ),
             nn.LeakyReLU(0.01),
         )
 
-        # 分支 B: 沿行扫描 (引入空洞卷积，感受野扩大至 1x33)
+        # ---- 分支 B: 沿行（水平）----
         self.row_conv = nn.Sequential(
-            nn.Conv2d(1, 16, kernel_size=(1, 5), padding=(0, 2)),
+            nn.Conv2d(1, 32, kernel_size=(1, 5), padding=(0, 2)),
             nn.LeakyReLU(0.01),
-            nn.Conv2d(16, 32, kernel_size=(1, 5), padding=(0, 4), dilation=(1, 2)),
+            nn.Conv2d(
+                32,
+                64,
+                kernel_size=(1, 5),
+                padding=(0, dilations[1] * 2),
+                dilation=(1, dilations[1]),
+            ),
             nn.LeakyReLU(0.01),
-            nn.Conv2d(32, 64, kernel_size=(1, 5), padding=(0, 8), dilation=(1, 4)),
+            nn.Conv2d(
+                64,
+                128,
+                kernel_size=(1, 5),
+                padding=(0, dilations[2] * 2),
+                dilation=(1, dilations[2]),
+            ),
             nn.LeakyReLU(0.01),
         )
 
-        # 融合层：因为上面输出了 64+64=128 通道，所以这里输入改为 128
+        # ---- 融合层 ----
+        # 128 + 128 = 256 通道输入（修复原来的 128 bug）
         self.fuse_conv = nn.Sequential(
-            nn.Conv2d(128, 64, kernel_size=1), nn.LeakyReLU(0.01)
+            nn.Conv2d(256, 128, kernel_size=1),
+            nn.LeakyReLU(0.01),
+            nn.Conv2d(128, 64, kernel_size=(3, 3), padding=(1, 1)),  # 2D 交互
+            nn.LeakyReLU(0.01),
         )
-        self.scalar_mlp = nn.Sequential(nn.Linear(4, 32), nn.LeakyReLU(0.01))
 
+        # ---- SE 注意力 ----
+        self.se = SE_Block(64, reduction=4)
+
+        # ---- 标量分支 ----
+        # 输入: gs_profile(max_dim) + scalars(5) = max_dim + 5
+        scalar_input_dim = max_dim + 5
+        self.scalar_mlp = nn.Sequential(
+            nn.Linear(scalar_input_dim, 64),
+            nn.LeakyReLU(0.01),
+        )
+
+        # ---- 池化 + 展平 ----
         self.grid_size = min(8, max_dim - 1)
         cnn_flat_size = 64 * self.grid_size * self.grid_size
 
-        # 融合尺寸 = 4096 (网格特征) + 32 (标量特征) = 4128
+        # ---- 融合 MLP ----
+        # CNN 输出 cnn_flat_size + scalar_mlp 输出 64
         self.fusion = nn.Sequential(
-            nn.Linear(cnn_flat_size + 32, 256), nn.LeakyReLU(0.01)
+            nn.Linear(cnn_flat_size + 64, 256),
+            nn.LeakyReLU(0.01),
         )
 
+        # ---- Dueling 头 ----
         self.value_stream = nn.Sequential(
             NoisyLinear(256, 128), nn.LeakyReLU(0.01), NoisyLinear(128, 1)
         )
@@ -160,30 +230,32 @@ class AxialCNN_DuelingDDQN(nn.Module):
     def forward(self, x):
         batch_size = x.size(0)
 
+        # ---- 拆分 state 向量 ----
         tokens_flat_size = (self.max_dim - 1) * self.token_dim
-        tokens_flat = x[:, :tokens_flat_size]
-        scalars = x[:, tokens_flat_size:]
+        gs_size = self.max_dim
+        scalar_size = 5
 
-        # 直接将 tokens 转为图像张量 (Batch, 1, max_dim-1, max_dim)
+        tokens_flat = x[:, :tokens_flat_size]
+        gs_and_scalars = x[:, tokens_flat_size:]  # max_dim + 5
+
+        # ---- CNN 路径 ----
         cos_matrix = tokens_flat.view(batch_size, 1, self.max_dim - 1, self.token_dim)
 
-        col_feat = self.col_conv(cos_matrix)
-        row_feat = self.row_conv(cos_matrix)
-        concat_feat = torch.cat([col_feat, row_feat], dim=1)
-        fused_matrix = self.fuse_conv(concat_feat)
+        col_feat = self.col_conv(cos_matrix)  # (B, 128, H, W)
+        row_feat = self.row_conv(cos_matrix)  # (B, 128, H, W)
+        concat_feat = torch.cat([col_feat, row_feat], dim=1)  # (B, 256, H, W)
+        fused_matrix = self.fuse_conv(concat_feat)  # (B, 64, H, W)
+        fused_matrix = self.se(fused_matrix)  # SE 注意力
 
-        # 【核心修改 2】：使用网格池化，保留空间坐标信息！
-        # 计算 Max 和 Avg
         pool_max = F.adaptive_max_pool2d(fused_matrix, (self.grid_size, self.grid_size))
         pool_avg = F.adaptive_avg_pool2d(fused_matrix, (self.grid_size, self.grid_size))
-        # 混合 (各占一半权重)
         grid_out = 0.5 * pool_max + 0.5 * pool_avg
+        cnn_out = grid_out.view(batch_size, -1)  # (B, 64*8*8)
 
-        # 展平后大小永远是 Batch x 4096
-        cnn_out = grid_out.view(batch_size, -1)
+        # ---- 标量路径 ----
+        scalar_out = self.scalar_mlp(gs_and_scalars)  # (B, 64)
 
-        scalar_out = self.scalar_mlp(scalars)
-
+        # ---- 融合 + Dueling ----
         fused = torch.cat([cnn_out, scalar_out], dim=1)
         feat = self.fusion(fused)
 
@@ -197,7 +269,6 @@ class AxialCNN_DuelingDDQN(nn.Module):
                 m.reset_noise()
 
 
-# ------------------------------
 # Agent
 # ------------------------------
 class SumTree:
@@ -292,7 +363,7 @@ class PrioritizedReplayBuffer:
 
 
 class DQNAgent:
-    def __init__(self, max_dim, state_dim, action_dim, batch_size=64):
+    def __init__(self, max_dim, state_dim, action_dim, batch_size=128):
         self.device = device
         self.batch_size = batch_size
         self.q_net = AxialCNN_DuelingDDQN(max_dim, action_dim).to(self.device)
@@ -300,16 +371,18 @@ class DQNAgent:
         self.target_net.load_state_dict(self.q_net.state_dict())
         self.target_net.eval()
         self.optimizer = optim.AdamW(
-            self.q_net.parameters(), lr=3e-4, weight_decay=1e-4
+            self.q_net.parameters(),
+            lr=6e-5,
+            weight_decay=1e-4,  # 原来 3e-4 → 5e-5
         )
-        # 学习率余弦退火：开始快，后期精细
         self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, T_max=500, eta_min=1e-5
+            self.optimizer,
+            T_max=500,
+            eta_min=1e-6,  # eta_min 降低
         )
-        # PER 替换普通 deque
         self.memory = PrioritizedReplayBuffer(50000)
         self.gamma = 0.99
-        self.tau = 0.005
+        self.tau = 0.0025  # 原来 0.005 → 0.002，target 网络更慢更新
 
     def save_checkpoint(self, model_path, memory_path=None):
         torch.save(self.q_net.state_dict(), model_path)
@@ -319,7 +392,7 @@ class DQNAgent:
             self.q_net.load_state_dict(torch.load(model_path, map_location=self.device))
             self.target_net.load_state_dict(self.q_net.state_dict())
 
-    def act_batch(self, states, is_training=True):
+    def act_batch(self, states, is_training=True, epsilon=0.0):
         s = torch.as_tensor(np.array(states), dtype=torch.float32, device=self.device)
         if is_training:
             self.q_net.train()
@@ -327,7 +400,19 @@ class DQNAgent:
         else:
             self.q_net.eval()
         with torch.no_grad():
-            return self.q_net(s).argmax(dim=1).cpu().numpy().tolist()
+            greedy_actions = self.q_net(s).argmax(dim=1).cpu().numpy().tolist()
+
+        if is_training and epsilon > 0:
+            actions = []
+            for a in greedy_actions:
+                if random.random() < epsilon:
+                    actions.append(
+                        random.randint(0, self.q_net.adv_stream[-1].out_features - 1)
+                    )
+                else:
+                    actions.append(a)
+            return actions
+        return greedy_actions
 
     def remember(self, s, a, r, ns, d):
         s_fp16 = s.astype(np.float16)
@@ -393,76 +478,138 @@ class DQNAgent:
 # ------------------------------
 class LatticeEnv:
     def __init__(self, matrix_path, max_dim=250):
-        self.initial_matrix_list = parse_challenge_file(matrix_path)
-        self.dim = len(self.initial_matrix_list)
-        self.max_dim = max_dim  # 用于网络输入的固定最大维度
-        raw_matrix_str = matrix_to_string(self.initial_matrix_list)
+        """
+        matrix_path: str 或 list[str]
+          - str:   单个文件路径（向后兼容）
+          - list:  多个同维度种子文件路径
+        """
+        # ---- 兼容处理 ----
+        if isinstance(matrix_path, str):
+            matrix_path = [matrix_path]
+        self.matrix_path = matrix_path
 
-        self.max_steps = self.dim * 3
+        # ---- 反重复机制 ----
+        self.action_history = []
+        self.repeat_window = 8
+        self.repeat_penalty_base = 0.3
 
-        self.alpha = 0.3
-        self.ratio_w = 40.0
-        self.gamma = 0.1
-        self.cost_w = 0.005
-        self.last_pos = None
+        # ---- 首次加载（用第一个种子初始化维度信息）----
+        self._load_lattice(self.matrix_path[0])
 
-        # 动作空间：包含 beta 和 pos
-        self.betas = [10 + 3 * i for i in range(9)]
-        self.action_list = [
-            (b, p) for b in self.betas if b <= self.dim for p in range(self.dim - b + 1)
-        ]
+        # ---- 动作空间（维度自适应）----
+        beta_max = min(int(0.8 * self.dim), 50)
+        beta_min = max(8, int(0.15 * self.dim))
+        n_betas = 7
+        raw = np.geomspace(beta_min, beta_max, n_betas)
+        self.betas = sorted(set(max(2, int(round(x))) for x in raw))
+
+        self.action_list = []
+        for b in self.betas:
+            if b > self.dim:
+                continue
+            pos_step = max(1, b // 4)
+            for p in range(0, self.dim - b + 1, pos_step):
+                self.action_list.append((b, p))
+            # 确保 pos=0 存在
+            if self.dim - b >= 0 and (b, 0) not in self.action_list:
+                self.action_list.insert(0, (b, 0))
         self.num_actions = len(self.action_list)
 
-        init_res = my_project_backend.run_reduction_rust(raw_matrix_str, "LLL", 2, 0)
-        self.initial_matrix_str = init_res["matrix_str"]
+        # ---- 状态维度（固定，只算一次）----
+        #  余弦矩阵: (max_dim-1)*max_dim
+        #  GSO profile: max_dim
+        #  标量: 5
+        self.state_dim = (self.max_dim - 1) * self.max_dim + self.max_dim + 5
 
-        rust_eval = my_project_backend.evaluate_state_rust(
-            self.initial_matrix_str, 0, 0
-        )
-        self.initial_gs_logs = np.array(rust_eval["gs_log_norms"], dtype=np.float32)
-        self.log_vol = np.sum(self.initial_gs_logs)
-        self.log_GH = (self.log_vol / self.dim) + 0.5 * math.log(
-            self.dim / (2 * math.pi * math.e)
-        )
-
-        # 【动态归一化因子】：根据初始状态动态设定
-        initial_log_defect = float(init_res["log_prod"] - self.log_vol)
-        initial_log_ratio = float(self.initial_gs_logs[0] - self.log_GH)
-        self.defect_scale = max(abs(initial_log_defect), 1.0)
-        self.ratio_scale = max(abs(initial_log_ratio), 1.0)
-
-        # 状态维度计算: (max_dim * (1 + max_dim)) + 4
-        self.state_dim = ((self.max_dim - 1) * self.max_dim) + 4
-
+        # ---- 全局最优追踪 ----
         self.best_ratio = float("inf")
         self.best_vector = None
         self.best_max_cos = None
         self.best_min_cos = None
         self.best_defect = None
 
-    def reset(self):
-        self.current_step = 0
-        self.useless_act_set = set()
-        res = my_project_backend.run_reduction_rust(
-            self.initial_matrix_str, "LLL", 2, 0
+    def _load_lattice(self, filepath):
+        """改为使用矩阵池"""
+        self.initial_matrix_list = parse_challenge_file(filepath)
+        self.dim = len(self.initial_matrix_list)
+        self.max_dim = ((self.dim + 7) // 8) * 8
+        self.max_dim = max(self.max_dim, 16)
+
+        raw_matrix_str = matrix_to_string(self.initial_matrix_list)
+        self.max_steps = self.dim * 3
+
+        # 奖励参数（同前）...
+        self.ratio_w = 30.0
+        self.alpha = 2.0
+        self.gamma_r = 1.0
+        self.cost_w = 0.15
+
+        # ★ 创建初始矩阵池句柄（LLL 预处理一步完成）
+        self.initial_pool_id = my_project_backend.create_matrix_lll_rust(raw_matrix_str)
+
+        # 获取 GSO 信息
+        init_eval = my_project_backend.evaluate_matrix_rust(self.initial_pool_id)
+        self.initial_gs_logs = np.array(init_eval["gs_log_norms"], dtype=np.float32)
+        self.log_vol = np.sum(self.initial_gs_logs)
+        self.log_GH = (self.log_vol / self.dim) + 0.5 * math.log(
+            self.dim / (2 * math.pi * math.e)
         )
-        self.current_matrix_str = res["matrix_str"]
-        self.last_rust_info = res
+
+        # 获取 log_prod（做一次 reduce 获取 cos_matrix 等信息）
+        init_info = my_project_backend.reduce_rust(
+            self.initial_pool_id,
+            "LLL",
+            2,
+            0,  # LLL 已做过，此处幂等
+        )
+
+        initial_log_defect = float(init_info["log_prod"] - self.log_vol)
+        initial_log_ratio = float(self.initial_gs_logs[0] - self.log_GH)
+        self.defect_scale = max(abs(initial_log_defect), 1.0)
+        self.ratio_scale = max(abs(initial_log_ratio), 1.0)
+
+        self.current_filepath = filepath
+
+    def reset(self):
+        chosen_path = random.choice(self.matrix_path)
+        if chosen_path != self.current_filepath:
+            # 释放旧句柄
+            if hasattr(self, "current_pool_id"):
+                my_project_backend.free_matrix_rust(self.current_pool_id)
+            self._load_lattice(chosen_path)
+
+        self.current_step = 0
+        self.action_history = []
+
+        # ★ 从初始矩阵克隆一份工作副本
+        if hasattr(self, "current_pool_id"):
+            my_project_backend.free_matrix_rust(self.current_pool_id)
+        self.current_pool_id = my_project_backend.clone_matrix_rust(
+            self.initial_pool_id
+        )
+
+        # LLL 一次
+        self.last_rust_info = my_project_backend.reduce_rust(
+            self.current_pool_id, "LLL", 2, 0
+        )
 
         state, _, current_ratio, _, _, _ = self._get_state_and_update_best(
-            self.current_matrix_str, res
+            self.last_rust_info
         )
         self.current_ep_best_ratio = current_ratio
+        self.initial_ep_ratio = current_ratio
         return state
 
-    def _get_state_and_update_best(self, mat_str, rust_info):
+    def _get_state_and_update_best(self, rust_info):
+        """不再需要 mat_str 参数！"""
         C = np.array(rust_info["cos_matrix"], dtype=np.float32)
         lower = C[np.tril_indices(self.dim, -1)].astype(np.float32)
         max_cos = float(np.clip(np.max(lower) if lower.size > 0 else 0.0, 0.0, 1.0))
         min_cos = float(np.clip(np.min(lower) if lower.size > 0 else 0.0, 0.0, 1.0))
-
         C = C + C.T
-        rust_eval = my_project_backend.evaluate_state_rust(mat_str, 0, 0)
+
+        # ★ 通过句柄获取 GSO
+        rust_eval = my_project_backend.evaluate_matrix_rust(self.current_pool_id)
         gs_logs = np.array(rust_eval["gs_log_norms"], dtype=np.float32)
 
         log_b1 = gs_logs[0]
@@ -474,16 +621,26 @@ class LatticeEnv:
 
         tokens = np.zeros((self.max_dim - 1, self.max_dim), dtype=np.float32)
         for i in range(self.dim - 1):
-            # 左半边：取第 i+1 行的下三角部分
             tokens[i, : i + 1] = C[i + 1, : i + 1]
-            # 右半边：取第 i 行的上三角部分
             tokens[i, i + 1 : self.dim] = C[i, i + 1 : self.dim]
-
         tokens_flat = tokens.flatten()
+
+        gs_profile = np.zeros(self.max_dim, dtype=np.float32)
+        gs_normalized = (gs_logs - self.log_GH) / self.ratio_scale
+        gs_profile[: self.dim] = np.tanh(gs_normalized)
+
         scalars = np.array(
-            [max_cos, min_cos, norm_log_defect, norm_log_ratio], dtype=np.float32
+            [
+                max_cos,
+                norm_log_defect,
+                norm_log_ratio,
+                float(np.tanh((gs_logs[0] - gs_logs[-1]) / self.ratio_scale)),
+                float(self.current_step / self.max_steps),
+            ],
+            dtype=np.float32,
         )
-        state_vec = np.concatenate([tokens_flat, scalars], axis=0)
+
+        state_vec = np.concatenate([tokens_flat, gs_profile, scalars], axis=0)
 
         true_b1_GH_ratio = float(math.exp(log_ratio))
         if true_b1_GH_ratio < self.best_ratio:
@@ -491,6 +648,8 @@ class LatticeEnv:
             self.best_max_cos = max_cos
             self.best_min_cos = min_cos
             self.best_defect = log_defect
+            # ★ 需要 dump 时才解析
+            mat_str = my_project_backend.dump_matrix_rust(self.current_pool_id)
             mat_list = string_to_matrix_fast(mat_str)
             if mat_list:
                 self.best_vector = mat_list[0]
@@ -499,71 +658,108 @@ class LatticeEnv:
 
     def step(self, action_idx):
         beta, pos = self.action_list[action_idx]
+
         _, old_log_b1, _, old_max_cos, _, old_log_def = self._get_state_and_update_best(
-            self.current_matrix_str, self.last_rust_info
+            self.last_rust_info
         )
 
-        # 1. 执行局部 BKZ
-        new_rust_info = my_project_backend.run_reduction_rust(
-            self.current_matrix_str, "LOCAL_BKZ", beta, pos
+        # ★ 直接用句柄约化，零序列化
+        bkz_info = my_project_backend.reduce_rust(
+            self.current_pool_id, "LOCAL_BKZ", beta, pos
         )
-        self.current_matrix_str = new_rust_info["matrix_str"]
 
-        # 2. 全局 LLL
-        lll_info = my_project_backend.run_reduction_rust(
-            self.current_matrix_str, "LLL", 2, 0
+        # LLL 调度
+        lll_frequency = 3
+        do_lll = (
+            self.current_step % lll_frequency == lll_frequency - 1
+            or self.current_step >= self.max_steps - 1
         )
-        self.current_matrix_str = lll_info["matrix_str"]
-        self.last_rust_info = lll_info
+        if do_lll:
+            lll_info = my_project_backend.reduce_rust(self.current_pool_id, "LLL", 2, 0)
+            self.last_rust_info = lll_info
+        else:
+            self.last_rust_info = bkz_info
 
         self.current_step += 1
         done = self.current_step >= self.max_steps
 
-        # ★ 关键修复：先保存旧的 best_ratio，再调用 _get_state_and_update_best
+        # 终局
+        if done:
+            final_beta = min(self.dim, 40)
+            my_project_backend.reduce_rust(
+                self.current_pool_id, "LOCAL_BKZ", final_beta, 0
+            )
+            self.last_rust_info = my_project_backend.reduce_rust(
+                self.current_pool_id, "LLL", 2, 0
+            )
+
+        # =============== 4. 计算新状态 ===============
         old_best_ratio = self.best_ratio
         old_ep_best_ratio = self.current_ep_best_ratio
 
         state, new_log_b1, new_ratio, new_max_cos, _, new_log_def = (
-            self._get_state_and_update_best(
-                self.current_matrix_str, self.last_rust_info
-            )
+            self._get_state_and_update_best(self.last_rust_info)
         )
 
-        R_global = old_log_def - new_log_def
+        # =============== 5. 奖励计算（分阶段）===============
         R_ratio = old_log_b1 - new_log_b1
-        R_cos = old_max_cos - new_max_cos
+        R_orth = old_max_cos - new_max_cos
+        R_def = old_log_def - new_log_def
 
-        # ★ 修复：用保存的旧值比较
-        breakthrough_bonus = 0.0
+        # 阶段动态权重
+        if self.best_ratio < 1.08:
+            eff_ratio_w = 15.0
+            eff_alpha = 8.0
+            eff_gamma_r = 5.0
+            eff_cost_w = 0.08
+        elif self.best_ratio < 1.15:
+            eff_ratio_w = 25.0
+            eff_alpha = 3.0
+            eff_gamma_r = 2.0
+            eff_cost_w = 0.12
+        else:
+            eff_ratio_w = self.ratio_w
+            eff_alpha = self.alpha
+            eff_gamma_r = self.gamma_r
+            eff_cost_w = self.cost_w
+
+        reward = (
+            eff_ratio_w * R_ratio
+            + eff_alpha * R_orth
+            + eff_gamma_r * R_def
+            - eff_cost_w * (beta / max(self.betas))
+        )
+
+        # 里程碑奖励
         if new_ratio < old_best_ratio:
-            breakthrough_bonus = 5.0
+            reward += 5.0
         elif new_ratio < old_ep_best_ratio:
-            breakthrough_bonus = 2.0
+            reward += 2.0
             self.current_ep_best_ratio = new_ratio
 
-        gain = self.alpha * R_global + self.ratio_w * R_ratio + self.gamma * R_cos
-        reward = gain - self.cost_w * beta
-
-        if pos <= 2 and beta >= 20:
+        # 位置引导
+        if R_ratio > 1e-3 and pos <= 2 and beta >= 20:
             reward += 0.1
 
-        # ★ 重设惩罚体系：温和且有信息量
-        if gain <= 1e-5 and breakthrough_bonus == 0.0:
-            # 无效动作只给小惩罚，不累加
-            # 重复的 (beta, pos) 稍微多罚一点点
-            action_key = (beta, pos)
-            if action_key in self.useless_act_set:
-                reward -= 1.0  # 重复无效：-1（原来是 -17！）
-            else:
-                reward -= 0.3  # 首次无效：-0.3（原来是 -2）
-                self.useless_act_set.add(action_key)
-        else:
-            # 有增益时只清除当前 (beta, pos)，不清除全部
-            action_key = (beta, pos)
-            self.useless_act_set.discard(action_key)
+        # 终局 bonus
+        if done:
+            if new_ratio < old_ep_best_ratio:
+                reward += 3.0 * (old_ep_best_ratio - new_ratio) / self.ratio_scale
+                self.current_ep_best_ratio = new_ratio
+            if self.current_ep_best_ratio >= self.initial_ep_ratio:
+                reward -= 2.0
 
-        reward += breakthrough_bonus
-        reward = float(np.clip(reward, -5.0, 50.0))  # 缩小负向裁剪范围
+        # =============== 6. 重复动作惩罚 ===============
+        self.action_history.append(action_idx)
+        if len(self.action_history) > self.repeat_window:
+            self.action_history.pop(0)
+
+        recent_count = self.action_history.count(action_idx)
+        if recent_count >= 2:
+            repeat_penalty = self.repeat_penalty_base * (recent_count - 1) ** 1.5
+            reward -= repeat_penalty
+
+        reward = float(np.clip(reward, -5.0, 50.0))
 
         info = {
             "beta": beta,
@@ -571,6 +767,7 @@ class LatticeEnv:
             "b1_GH_ratio": new_ratio,
             "step": self.current_step,
         }
+
         return state, float(reward), done, info
 
 
@@ -617,7 +814,8 @@ class SubprocVecEnv:
         self.remotes, self.work_remotes = zip(*[mp.Pipe() for _ in range(num_envs)])
         self.processes = [
             mp.Process(
-                target=env_worker, args=(work_remote, remote, matrix_path, max_dim)
+                target=env_worker,
+                args=(work_remote, remote, matrix_path, max_dim),  # 传列表
             )
             for (work_remote, remote) in zip(self.work_remotes, self.remotes)
         ]
@@ -681,20 +879,17 @@ def train(
     num_envs,
     max_steps,
     dim,
-    best_file_path,  # <--- 确保这里有这个参数
-    episodes=200,
+    best_file_path,
+    episodes=500,
     print_every=10,
     save_dir="results",
-    train_freq=4,
-    utd=1.0,
 ):
     history = {"reward": [], "loss": [], "ratio_min": []}
     best_known_ratio = float("inf")
 
-    # 1. 先重置环境，此时环境内部的 None 会被真实的数值覆盖
     states = vec_env.reset()
 
-    # 2. 【修复】：在这里获取初始状态并保存
+    # ---- 保存初始状态 ----
     initial_bests = vec_env.get_bests()
     init_ratio, init_defect, init_max_cos, init_min_cos, init_vector = initial_bests[0]
     save_best_results(
@@ -708,7 +903,6 @@ def train(
         is_initial=True,
     )
 
-    # 【新增】：跨 Episode 累积日志列表
     accumulated_ep_logs = []
     total_steps = 0
 
@@ -716,62 +910,63 @@ def train(
         ep_rewards = np.zeros(num_envs)
         ep_ratios = []
         losses = []
-
-        # 记录当前 Episode 某一个环境的动作与梯度轨迹
         ep_action_logs = []
 
+        # ---- ε-greedy 衰减 ----
+        epsilon = max(0.05, 0.3 * (1.0 - ep / episodes))
+
         for step in range(max_steps):
-            total_steps += 1  # 步数累加
-            actions = agent.act_batch(states, is_training=True)
+            total_steps += 1
+
+            # ---- 动作选择 ----
+            actions = agent.act_batch(states, is_training=True, epsilon=epsilon)
             next_states, rewards, batch_dones, infos = vec_env.step(actions)
 
-            step_max_grad = 0.0
-
-            # --- 步骤 A: 收集经验 (严格遵守 num_envs 长度) ---
+            # ---- 逐环境存入 replay buffer ----
             for i in range(num_envs):
                 agent.remember(
-                    states[i], actions[i], rewards[i], next_states[i], batch_dones[i]
+                    states[i],
+                    actions[i],
+                    rewards[i],
+                    next_states[i],
+                    batch_dones[i],
                 )
                 ep_rewards[i] += rewards[i]
                 ep_ratios.append(infos[i]["b1_GH_ratio"])
 
-            # --- 步骤 B: 集中火力训练 ---
-            # 不每步都更新。当攒够 4 步的数据后，一口气更新 8 次。
-            # 平均下来依然是每步更新 2 次 (UTD 没变)，但是大大减少了主进程在收发数据和算梯度之间的来回切换。
-            if total_steps % train_freq == 0:
-                for _ in range(8):
+            # ---- 训练：每 2 步训练 2 次（UTD=1.0）----
+            step_max_grad = 0.0
+            if total_steps % 2 == 0:
+                for _ in range(2):
                     loss, max_grad = agent.replay()
                     if loss != 0.0:
                         losses.append(loss)
                         step_max_grad = max(step_max_grad, max_grad)
 
-            # 【提取动作数据】：为了避免日志刷屏，我们只提取 Env 0 的数据展示
+            # ---- 日志（仅 Env 0）----
             pos = infos[0]["pos"]
             beta = infos[0]["beta"]
-            # 只有在触发训练的那一步，g(梯度)才有数值，平时为 0.0
             ep_action_logs.append(f"(p:{pos:2d}, b:{beta:2d}, g:{step_max_grad:.2f})")
 
             states = next_states
 
+        # ---- Episode 统计 ----
         avg_ep_reward = np.mean(ep_rewards)
         history["reward"].append(avg_ep_reward)
         history["loss"].append(float(np.mean(losses)) if losses else 0.0)
         ep_min_ratio = min(ep_ratios) if ep_ratios else float("inf")
         history["ratio_min"].append(ep_min_ratio)
 
+        # ---- 全局最优更新 ----
         bests = vec_env.get_bests()
-        global_best_ratio = min([b[0] for b in bests])
+        global_best_ratio = min(b[0] for b in bests)
 
         if global_best_ratio < best_known_ratio:
             best_known_ratio = global_best_ratio
             model_path = os.path.join(save_dir, f"agent6L_best_model_dim{dim}.pth")
-            memory_path = os.path.join(
-                save_dir, f"agent6L_best_model_dim_best_memory_dim{dim}.pkl"
-            )
-            agent.save_checkpoint(model_path, memory_path)
+            agent.save_checkpoint(model_path)
 
-            # 找出是哪个环境找到了最优解，提取详细信息并立即保存到本地
-            best_idx = np.argmin([b[0] for b in bests])
+            best_idx = int(np.argmin([b[0] for b in bests]))
             b_ratio, b_defect, b_max_cos, b_min_cos, b_vector = bests[best_idx]
             save_best_results(
                 best_file_path,
@@ -783,56 +978,68 @@ def train(
                 b_vector,
                 is_initial=False,
             )
+            print(f"  ★ New global best {global_best_ratio:.6f} saved!")
 
-            print(
-                f"agent6LHisBest find {global_best_ratio:.4f}! weight, memory and txt backed up"
-            )
-
+        # ---- 早停 ----
         if best_known_ratio < 1.05:
             print(
-                f"\n [Dim {dim}] Goal reached! Current best ratio {best_known_ratio:.4f} < 1.05 (At ep {ep})! The training of this dimension is stopped early."
+                f"\n [Dim {dim}] Goal reached! ratio={best_known_ratio:.4f} < 1.05 at ep {ep}"
             )
             break
 
+        # ---- 打印 ----
         if ep % print_every == 0:
-            # 1. 打印动作轨迹
             print(f"\n[{'=' * 15} Ep {ep} Trajectory (Env 0) {'=' * 15}]")
-            for idx in range(
-                0, len(ep_action_logs), 4
-            ):  # 每行打印 4 个动作步骤防止超出屏幕
-                print(" -> ".join(ep_action_logs[idx : idx + 4]))
+            for idx in range(0, len(ep_action_logs), 5):
+                print(" -> ".join(ep_action_logs[idx : idx + 5]))
             print("-" * 55)
 
-            # 2. 生成当前 Ep 日志并加入累积列表
-            current_log = f"Ep {ep:4d} | Avg R: {avg_ep_reward:9.3f} | Loss: {history['loss'][-1]:7.4f} | Ep min ratio: {ep_min_ratio:.4f} | historical best: {global_best_ratio:.4f}"
+            current_log = (
+                f"Ep {ep:4d} | ε:{epsilon:.3f} | Avg R: {avg_ep_reward:9.3f} "
+                f"| Loss: {history['loss'][-1]:7.4f} | Ep min: {ep_min_ratio:.4f} "
+                f"| Best: {best_known_ratio:.4f}"
+            )
             accumulated_ep_logs.append(current_log)
 
-            # 3. 集中打印全部历史日志
-            print("\n=== Training History Log ===")
+            print("\n=== Training History ===")
             for log in accumulated_ep_logs:
                 print(log)
-            print("============================\n")
+            print("========================\n")
+
         agent.step_scheduler()
 
     return history
 
 
-def run_experiment(dim, dataset_dir, results_dir, num_envs=4):
+def run_experiment(dim, dataset_dir, results_dir, num_envs=16):
     max_dim = ((dim + 7) // 8) * 8
     max_dim = max(max_dim, 16)
 
-    print(f"[Dim {dim}] max_dim={max_dim}, {num_envs} envs...")
-    train_file = os.path.join(dataset_dir, f"svpchallengedim{dim}seed0.txt")
-    best_file_path = os.path.join(results_dir, f"A6_L_best_results_low_dim{dim}.txt")
+    # ---- 收集同维度所有种子文件 ----
+    import glob
 
-    vec_env = SubprocVecEnv(num_envs, train_file, max_dim=max_dim)
-    temp_env = LatticeEnv(train_file, max_dim=max_dim)
-    agent = DQNAgent(
-        max_dim=max_dim, state_dim=temp_env.state_dim, action_dim=temp_env.num_actions
+    pattern = os.path.join(dataset_dir, f"svpchallengedim{dim}seed*.txt")
+    all_files = sorted(glob.glob(pattern))
+    if not all_files:
+        print(f"[Dim {dim}] No files found matching {pattern}")
+        return
+    print(
+        f"[Dim {dim}] Found {len(all_files)} seed files, max_dim={max_dim}, {num_envs} envs"
     )
 
-    model_path = os.path.join(results_dir, f"agent6_2UP_best_model_low_dim{dim}.pth")
-    # 注意：PER 版不再保存/加载记忆
+    best_file_path = os.path.join(results_dir, f"A6_best_dim{dim}.txt")
+
+    # ---- SubprocVecEnv 传入文件列表 ----
+    vec_env = SubprocVecEnv(num_envs, all_files, max_dim=max_dim)
+    temp_env = LatticeEnv(all_files, max_dim=max_dim)
+
+    agent = DQNAgent(
+        max_dim=max_dim,
+        state_dim=temp_env.state_dim,
+        action_dim=temp_env.num_actions,
+    )
+
+    model_path = os.path.join(results_dir, f"agent6_best_model_dim{dim}.pth")
     agent.load_checkpoint(model_path)
 
     history = train(
@@ -845,14 +1052,13 @@ def run_experiment(dim, dataset_dir, results_dir, num_envs=4):
         best_file_path=best_file_path,
         print_every=10,
         save_dir=results_dir,
-    )  # 获取最佳结果
+    )
+
+    # ---- 画图 ----
     bests = vec_env.get_bests()
-    best_idx = np.argmin([b[0] for b in bests])
-    best_ratio = bests[best_idx][0]
+    best_ratio = min(b[0] for b in bests)
 
     plt.figure(figsize=(14, 6))
-
-    # 左图：奖励曲线
     plt.subplot(1, 2, 1)
     plt.plot(history["reward"], label="Average Reward")
     plt.title(f"Dim {dim} - Reward per Episode")
@@ -861,27 +1067,21 @@ def run_experiment(dim, dataset_dir, results_dir, num_envs=4):
     plt.grid(True)
     plt.legend()
 
-    # 右图：最短向量比率曲线
     plt.subplot(1, 2, 2)
     plt.plot(history["ratio_min"], label="Ep Min Ratio", color="orange")
-    # 画一条红色的虚线，标出全局找到的最优值作为参考底线
     plt.axhline(
         y=best_ratio, color="r", linestyle="--", label=f"Global Best ({best_ratio:.4f})"
     )
-    plt.title(f"Dim {dim} - Approximation Factor (norm(b1)/GH)")
+    plt.title(f"Dim {dim} - Ratio")
     plt.xlabel("Episode")
     plt.ylabel("Ratio")
     plt.legend()
     plt.grid(True)
 
-    # 拼装保存路径：直接存入 results 文件夹
-    plot_path = os.path.join(results_dir, f"training_evolution_dim{dim}.png")
-    plt.savefig(plot_path)
+    plt.savefig(os.path.join(results_dir, f"training_dim{dim}.png"))
     plt.close()
-
     vec_env.close()
-    print(f"[Dim {dim}] Training Complete! Results saved.")
-    return dim
+    print(f"[Dim {dim}] Complete!")
 
 
 if __name__ == "__main__":
@@ -894,6 +1094,6 @@ if __name__ == "__main__":
     RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
-    DIMS_TO_RUN = [40, 43, 44, 47, 50]
+    DIMS_TO_RUN = [55, 57, 67, 68, 69]
     for dim in DIMS_TO_RUN:
-        run_experiment(dim, DATASET_DIR, RESULTS_DIR, num_envs=9)
+        run_experiment(dim, DATASET_DIR, RESULTS_DIR, num_envs=16)
