@@ -527,6 +527,8 @@ class LatticeEnv:
         self.best_max_cos = None
         self.best_min_cos = None
         self.best_defect = None
+        self.best_seed_file = None
+        self.best_basis = None
 
     def _load_lattice(self, filepath):
         """改为使用矩阵池"""
@@ -648,11 +650,12 @@ class LatticeEnv:
             self.best_max_cos = max_cos
             self.best_min_cos = min_cos
             self.best_defect = log_defect
-            # ★ 需要 dump 时才解析
+            self.best_seed_file = self.current_filepath  # ★ 新增：记录哪个种子
             mat_str = my_project_backend.dump_matrix_rust(self.current_pool_id)
             mat_list = string_to_matrix_fast(mat_str)
             if mat_list:
                 self.best_vector = mat_list[0]
+                self.best_basis = mat_list
 
         return state_vec, log_b1, true_b1_GH_ratio, max_cos, min_cos, log_defect
 
@@ -796,6 +799,8 @@ def env_worker(remote, parent_remote, matrix_path, max_dim):
                         env.best_max_cos,
                         env.best_min_cos,
                         env.best_vector,
+                        env.best_seed_file,
+                        env.best_basis,
                     )
                 )
             elif cmd == "close":
@@ -967,7 +972,9 @@ def train(
             agent.save_checkpoint(model_path)
 
             best_idx = int(np.argmin([b[0] for b in bests]))
-            b_ratio, b_defect, b_max_cos, b_min_cos, b_vector = bests[best_idx]
+            b_ratio, b_defect, b_max_cos, b_min_cos, b_vector, b_seed_file, b_basis = (
+                bests[best_idx]
+            )
             save_best_results(
                 best_file_path,
                 dim,
@@ -978,8 +985,10 @@ def train(
                 b_vector,
                 is_initial=False,
             )
-            print(f"  ★ New global best {global_best_ratio:.6f} saved!")
-
+            seed_name = os.path.basename(b_seed_file) if b_seed_file else "unknown"
+            print(
+                f"  ★ New global best {global_best_ratio:.6f} from [{seed_name}] saved!"
+            )
         # ---- 早停 ----
         if best_known_ratio < 1.05:
             print(
