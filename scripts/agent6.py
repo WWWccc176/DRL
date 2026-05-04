@@ -46,7 +46,7 @@ def string_to_matrix_fast(mat_str):
 
 def parse_challenge_file(filepath):
     """
-    读取格基数据集文件 (如 svpchallengedim68seed0.txt)，
+    读取格基数据集文件 (如 svpchallengedim68seed13.txt)，
     并将其解析为 Python 的 2D 整数列表。
     自动处理可能包含的 '[' 或 ']' 符号。
     """
@@ -496,7 +496,7 @@ class LatticeEnv:
         self._load_lattice(self.matrix_path[0])
 
         # ---- 动作空间（维度自适应）----
-        beta_max = min(int(0.8 * self.dim), 50)
+        beta_max = min(int(0.7 * self.dim), 50)
         beta_min = max(8, int(0.15 * self.dim))
         n_betas = 7
         raw = np.geomspace(beta_min, beta_max, n_betas)
@@ -533,8 +533,7 @@ class LatticeEnv:
         """改为使用矩阵池"""
         self.initial_matrix_list = parse_challenge_file(filepath)
         self.dim = len(self.initial_matrix_list)
-        self.max_dim = ((self.dim + 7) // 8) * 8
-        self.max_dim = max(self.max_dim, 16)
+        self.max_dim = self.dim
 
         raw_matrix_str = matrix_to_string(self.initial_matrix_list)
         self.max_steps = self.dim * 3
@@ -895,7 +894,9 @@ def train(
 
     # ---- 保存初始状态 ----
     initial_bests = vec_env.get_bests()
-    init_ratio, init_defect, init_max_cos, init_min_cos, init_vector = initial_bests[0]
+    init_ratio, init_defect, init_max_cos, init_min_cos, init_vector, _, _ = (
+        initial_bests[0]
+    )
     save_best_results(
         best_file_path,
         dim,
@@ -989,7 +990,7 @@ def train(
                 f"  ★ New global best {global_best_ratio:.6f} from [{seed_name}] saved!"
             )
         # ---- 早停 ----
-        if best_known_ratio < 1.05:
+        if best_known_ratio < 1.035:
             print(
                 f"\n [Dim {dim}] Goal reached! ratio={best_known_ratio:.4f} < 1.05 at ep {ep}"
             )
@@ -1019,21 +1020,16 @@ def train(
     return history
 
 
-def run_experiment(dim, dataset_dir, results_dir, num_envs=16):
-    max_dim = ((dim + 7) // 8) * 8
-    max_dim = max(max_dim, 16)
+def run_experiment(dim, dataset_dir, results_dir, num_envs=9):
+    max_dim = dim
 
-    # ---- 收集同维度所有种子文件 ----
-    import glob
-
-    pattern = os.path.join(dataset_dir, f"svpchallengedim{dim}seed*.txt")
-    all_files = sorted(glob.glob(pattern))
-    if not all_files:
-        print(f"[Dim {dim}] No files found matching {pattern}")
+    # ---- 【改动1】只用 seed13 ----
+    seed13_file = os.path.join(dataset_dir, f"svpchallengedim{dim}seed13.txt")
+    if not os.path.exists(seed13_file):
+        print(f"[Dim {dim}] File not found: {seed13_file}")
         return
-    print(
-        f"[Dim {dim}] Found {len(all_files)} seed files, max_dim={max_dim}, {num_envs} envs"
-    )
+    all_files = [seed13_file]
+    print(f"[Dim {dim}] Using only seed13, max_dim={max_dim}, {num_envs} envs")
 
     best_file_path = os.path.join(results_dir, f"A6_best_dim{dim}.txt")
 
@@ -1102,6 +1098,6 @@ if __name__ == "__main__":
     RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
-    DIMS_TO_RUN = [55, 57, 67, 68, 69]
+    DIMS_TO_RUN = [67]
     for dim in DIMS_TO_RUN:
-        run_experiment(dim, DATASET_DIR, RESULTS_DIR, num_envs=16)
+        run_experiment(dim, DATASET_DIR, RESULTS_DIR, num_envs=9)
