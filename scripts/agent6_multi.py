@@ -485,6 +485,8 @@ class LatticeEnv:
         # ★ per-seed 追踪：ratio + 详细信息
         self.seed_best_ratios = {}
         self.seed_best_infos = {}
+        self.seed_data = {}
+        self._preload_all_seeds()
 
         # 缓存
         self._cached_log_b1 = 0.0
@@ -527,42 +529,103 @@ class LatticeEnv:
 
         self.current_filepath = filepath
 
+    def _preload_all_seeds(self):
+        """训练前主动为所有种子做 LLL 约化，存储 pool_id 和初始信息"""
+        import re
+
+        for filepath in self.matrix_paths:
+            match = re.search(r"seed(\d+)", os.path.basename(filepath))
+            sid = int(match.group(1)) if match else 0
+
+            mat_list = parse_challenge_file(filepath)
+            raw_str = matrix_to_string(mat_list)
+            pool_id = my_project_backend.create_matrix_lll_rust(raw_str)
+
+            eval_info = my_project_backend.evaluate_matrix_rust(pool_id)
+            gs_logs = np.array(eval_info["gs_log_norms"], dtype=np.float32)
+            log_vol = float(np.sum(gs_logs))
+            log_GH = (log_vol / self.dim) + 0.5 * math.log(
+                self.dim / (2 * math.pi * math.e)
+            )
+
+            lll_info = my_project_backend.reduce_rust(pool_id, "LLL", 2, 0)
+            initial_log_defect = float(lll_info["log_prod"] - log_vol)
+            initial_log_ratio = float(gs_logs[0] - log_GH)
+            defect_scale = max(abs(initial_log_defect), 1.0)
+            ratio_scale = max(abs(initial_log_ratio), 1.0)
+
+            self.seed_data[sid] = {
+                "pool_id": pool_id,
+                "log_vol": log_vol,
+                "log_GH": log_GH,
+                "defect_scale": defect_scale,
+                "ratio_scale": ratio_scale,
+                "initial_gs_logs": gs_logs,
+                "filepath": filepath,
+            }
+
+            # ★ 计算初始 ratio 并填充 seed_best_ratios / seed_best_infos
+            true_ratio = float(math.exp(gs_logs[0] - log_GH))
+
+            C = np.array(lll_info["cos_matrix"], dtype=np.float32)
+            lower = C[np.tril_indices(self.dim, -1)]
+            max_cos = float(np.clip(np.max(lower) if lower.size > 0 else 0.0, 0.0, 1.0))
+            min_cos = float(np.clip(np.min(lower) if lower.size > 0 else 0.0, 0.0, 1.0))
+
+            mat_str = my_project_backend.dump_matrix_rust(pool_id)
+            mat_list_reduced = string_to_matrix_fast(mat_str)
+
+            self.seed_best_ratios[sid] = true_ratio
+            self.seed_best_infos[sid] = {
+                "ratio": true_ratio,
+                "defect": initial_log_defect,
+                "max_cos": max_cos,
+                "min_cos": min_cos,
+                "vector": mat_list_reduced[0] if mat_list_reduced else None,
+                "basis": mat_list_reduced,
+                "seed_id": sid,
+                "seed_file": os.path.basename(filepath),
+                "episode": 0,
+            }
+
+            # 更新全局最优
+            if true_ratio < self.best_ratio:
+                self.best_ratio = true_ratio
+                self.best_max_cos = max_cos
+                self.best_min_cos = min_cos
+                self.best_defect = initial_log_defect
+                self.best_vector = mat_list_reduced[0] if mat_list_reduced else None
+                self.best_basis = mat_list_reduced
+                self.best_seed_file = filepath
+                self.best_episode = 0
+
     def reset(self):
-        # ★ 每次 reset 随机选种子
-        chosen_path = random.choice(self.matrix_paths)
-        if chosen_path != self.current_filepath:
-            if hasattr(self, "current_pool_id"):
-                my_project_backend.free_matrix_rust(self.current_pool_id)
-            self._load_lattice(chosen_path)
+        # ★ 每次 reset 随机选种子，从预加载数据中取
+        sid_list = list(self.seed_data.keys())
+        chosen_sid = random.choice(sid_list)
+        sd = self.seed_data[chosen_sid]
+
+        self.current_seed_id = chosen_sid
+        self.current_filepath = sd["filepath"]
+        self.initial_pool_id = sd["pool_id"]
+        self.log_vol = sd["log_vol"]
+        self.log_GH = sd["log_GH"]
+        self.defect_scale = sd["defect_scale"]
+        self.ratio_scale = sd["ratio_scale"]
+        self.initial_gs_logs = sd["initial_gs_logs"]
 
         self.current_step = 0
         self.action_history = []
         self.episode_count += 1
 
-        # 提取当前种子 ID
-        import re
-
-        match = re.search(r"seed(\d+)", os.path.basename(self.current_filepath))
-        self.current_seed_id = int(match.group(1)) if match else 0
-
-        if hasattr(self, "current_pool_id"):
+        if (
+            hasattr(self, "current_pool_id")
+            and self.current_pool_id != self.initial_pool_id
+        ):
             my_project_backend.free_matrix_rust(self.current_pool_id)
         self.current_pool_id = my_project_backend.clone_matrix_rust(
             self.initial_pool_id
         )
-
-        self.last_rust_info = my_project_backend.reduce_rust(
-            self.current_pool_id, "LLL", 2, 0
-        )
-        state, log_b1, current_ratio, max_cos, _, log_def = (
-            self._get_state_and_update_best(self.last_rust_info)
-        )
-        self.current_ep_best_ratio = current_ratio
-        self.initial_ep_ratio = current_ratio
-        self._cached_log_b1 = log_b1
-        self._cached_max_cos = max_cos
-        self._cached_log_def = log_def
-        return state
 
     def _get_state_and_update_best(self, rust_info):
         C = np.array(rust_info["cos_matrix"], dtype=np.float32)
@@ -1034,11 +1097,11 @@ def train(
             for sid, sinfo in env_info["seed_infos"].items():
                 old_ratio = global_seed_best_ratios.get(sid, float("inf"))
                 if sinfo["ratio"] < old_ratio:
+                    is_first_time = sid not in global_seed_best_infos
                     global_seed_best_ratios[sid] = sinfo["ratio"]
                     global_seed_best_infos[sid] = sinfo
-                    save_seed_result(save_dir, dim, sinfo, is_update=True)
+                    save_seed_result(save_dir, dim, sinfo, is_update=not is_first_time)
                     updated_seeds.append(sid)
-
         # ---- 全局最优更新 ----
         current_global_best = (
             min(global_seed_best_ratios.values())
@@ -1210,7 +1273,6 @@ if __name__ == "__main__":
     RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
-    DIMS_TO_RUN = [67, 59, 60, 61]
+    DIMS_TO_RUN = [50, 51, 52, 53, 54]
     for dim in DIMS_TO_RUN:
         run_experiment(dim, DATASET_DIR, RESULTS_DIR)
-
