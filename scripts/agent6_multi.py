@@ -600,7 +600,7 @@ class LatticeEnv:
                 self.best_episode = 0
 
     def reset(self):
-        # ★ 每次 reset 随机选种子，从预加载数据中取
+        # 每次 reset 随机选种子
         sid_list = list(self.seed_data.keys())
         chosen_sid = random.choice(sid_list)
         sd = self.seed_data[chosen_sid]
@@ -618,25 +618,24 @@ class LatticeEnv:
         self.action_history = []
         self.episode_count += 1
 
-        # 释放旧 episode 的矩阵副本
         if hasattr(self, "current_pool_id") and self.current_pool_id >= 0:
             try:
                 my_project_backend.free_matrix_rust(self.current_pool_id)
             except Exception:
                 pass
 
-        # 克隆当前 seed 的初始 LLL 矩阵
         self.current_pool_id = my_project_backend.clone_matrix_rust(
             self.initial_pool_id
         )
 
         if self.current_pool_id < 0:
             raise RuntimeError(
-                f"clone_matrix_rust failed: invalid initial_pool_id={self.initial_pool_id}, "
-                f"seed={chosen_sid}, file={self.current_filepath}"
+                f"clone_matrix_rust failed: "
+                f"initial_pool_id={self.initial_pool_id}, "
+                f"seed={chosen_sid}, "
+                f"file={self.current_filepath}"
             )
 
-        # 生成初始 rust_info：需要 cos_matrix 和 log_prod
         init_info = my_project_backend.reduce_rust(
             self.current_pool_id,
             "LLL",
@@ -644,7 +643,6 @@ class LatticeEnv:
             0,
         )
 
-        # 生成初始 state，并同步 reward 所需缓存
         state, log_b1, ratio, max_cos, min_cos, log_def = (
             self._get_state_and_update_best(init_info)
         )
@@ -653,13 +651,21 @@ class LatticeEnv:
         self._cached_max_cos = max_cos
         self._cached_log_def = log_def
 
-        # step() 里会用到这两个变量；原代码没有初始化，修完 reset 后会马上遇到 AttributeError
         self.initial_ep_ratio = ratio
         self.current_ep_best_ratio = ratio
 
         self.last_rust_info = init_info
 
-        return state.astype(np.float32, copy=False)
+        state = np.asarray(state, dtype=np.float32)
+
+        expected_dim = self.state_dim
+        if state.ndim != 1 or state.shape[0] != expected_dim:
+            raise RuntimeError(
+                f"bad reset state: shape={state.shape}, "
+                f"dtype={state.dtype}, expected=({expected_dim},)"
+            )
+
+        return state
 
     def _get_state_and_update_best(self, rust_info):
         C = np.array(rust_info["cos_matrix"], dtype=np.float32)
@@ -1307,6 +1313,6 @@ if __name__ == "__main__":
     RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
-    DIMS_TO_RUN = [54, 55, 56, 57, 58, 59, 60]
+    DIMS_TO_RUN = [50, 51]
     for dim in DIMS_TO_RUN:
         run_experiment(dim, DATASET_DIR, RESULTS_DIR)
