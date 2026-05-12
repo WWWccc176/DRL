@@ -618,14 +618,48 @@ class LatticeEnv:
         self.action_history = []
         self.episode_count += 1
 
-        if (
-            hasattr(self, "current_pool_id")
-            and self.current_pool_id != self.initial_pool_id
-        ):
-            my_project_backend.free_matrix_rust(self.current_pool_id)
+        # 释放旧 episode 的矩阵副本
+        if hasattr(self, "current_pool_id") and self.current_pool_id >= 0:
+            try:
+                my_project_backend.free_matrix_rust(self.current_pool_id)
+            except Exception:
+                pass
+
+        # 克隆当前 seed 的初始 LLL 矩阵
         self.current_pool_id = my_project_backend.clone_matrix_rust(
             self.initial_pool_id
         )
+
+        if self.current_pool_id < 0:
+            raise RuntimeError(
+                f"clone_matrix_rust failed: invalid initial_pool_id={self.initial_pool_id}, "
+                f"seed={chosen_sid}, file={self.current_filepath}"
+            )
+
+        # 生成初始 rust_info：需要 cos_matrix 和 log_prod
+        init_info = my_project_backend.reduce_rust(
+            self.current_pool_id,
+            "LLL",
+            2,
+            0,
+        )
+
+        # 生成初始 state，并同步 reward 所需缓存
+        state, log_b1, ratio, max_cos, min_cos, log_def = (
+            self._get_state_and_update_best(init_info)
+        )
+
+        self._cached_log_b1 = log_b1
+        self._cached_max_cos = max_cos
+        self._cached_log_def = log_def
+
+        # step() 里会用到这两个变量；原代码没有初始化，修完 reset 后会马上遇到 AttributeError
+        self.initial_ep_ratio = ratio
+        self.current_ep_best_ratio = ratio
+
+        self.last_rust_info = init_info
+
+        return state.astype(np.float32, copy=False)
 
     def _get_state_and_update_best(self, rust_info):
         C = np.array(rust_info["cos_matrix"], dtype=np.float32)
@@ -1273,6 +1307,6 @@ if __name__ == "__main__":
     RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
-    DIMS_TO_RUN = [50, 51]
+    DIMS_TO_RUN = [54, 55, 56, 57, 58, 59, 60]
     for dim in DIMS_TO_RUN:
         run_experiment(dim, DATASET_DIR, RESULTS_DIR)
