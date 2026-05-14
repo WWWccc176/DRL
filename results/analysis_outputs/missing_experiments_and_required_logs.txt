@@ -1,0 +1,51 @@
+Experiments that can be generated directly from current result files
+===================================================================
+1. Training dynamics:
+   - Best learning curve per dimension.
+   - Success count curve per dimension.
+
+2. Initial LLL vs final DRL:
+   - The Initial State block gives the LLL-preprocessed basis quality.
+   - The New Best Found blocks give the final/best DRL result.
+
+3. End-to-end DRL result table:
+   - mean ratio, std ratio, best ratio, worst ratio, success count.
+
+4. Orthogonality metrics:
+   - initial/final orthogonality defect.
+   - initial/final maximum cosine.
+
+5. Per-seed variability:
+   - final ratio scatter plot over seeds and dimensions.
+
+Experiments that require additional logs or additional runs
+===========================================================
+1. Fixed BKZ baseline:
+   - Cannot be produced from DRL result files unless fixed-BKZ results are saved separately.
+   - You should run a fixed BKZ baseline script and save one file per dimension/seed in the same format:
+     Initial State + Final Fixed BKZ State, including ratio, defect, max cosine, min cosine.
+
+2. Random local-BKZ baseline:
+   - Cannot be inferred from DRL result files.
+   - You need to run a random policy using the same action budget, periodic LLL rule, and terminal polish.
+
+3. AxialCNN vs MLP ablation:
+   - Requires training a separate MLP-DDQN agent under the same seed set and budget.
+   - Existing DRL result files do not contain this comparison.
+
+4. With/without cosine ablation:
+   - Requires a separate training run with cosine-token features removed.
+   - Existing result files do not contain this comparison.
+
+5. Runtime and computational cost:
+   - The current sample result format does not contain reliable runtime, BKZ call count, LLL call count, or neural-network overhead.
+   - Add logging for wall-clock time, number of backend calls, selected beta values, number of LLL calls, and final polish time.
+
+6. Cosine heatmaps:
+   - A heatmap requires either the full basis matrix or the saved cosine matrix.
+   - If result files only save b1 and scalar metrics, the script cannot reconstruct the cosine matrix.
+   - To generate heatmaps, save final_basis or final_cosine_matrix for each best result.
+
+7. Action-distribution analysis:
+   - Requires action traces such as episode, step, beta, pos, reward.
+   - If action traces are only printed to terminal and not saved, the script cannot reconstruct them.
