@@ -1064,7 +1064,9 @@ def train(
         ep_rewards = np.zeros(num_envs)
         ep_ratios = []
         losses = []
-        ep_action_logs = []
+        ep_action_logs = [[] for _ in range(num_envs)]
+        best_ep_ratio = float("inf")
+        best_ep_eid = None
         epsilon = max(0.05, 0.3 * (1.0 - ep / episodes))
 
         env_steps = np.zeros(num_envs, dtype=int)
@@ -1098,11 +1100,14 @@ def train(
                 ep_ratios.append(info_i["b1_GH_ratio"])
                 collected += 1
 
-                if eid == 0:
-                    ep_action_logs.append(
-                        f"(p:{info_i['pos']:2d}, b:{info_i['beta']:2d})"
-                    )
-
+                ep_action_logs[eid].append(
+                    f"a:{prev_actions[eid]:3d} "
+                    f"(p:{info_i['pos']:2d}, b:{info_i['beta']:2d}, "
+                    f"ratio:{info_i['b1_GH_ratio']:.6f})"
+                )
+                if info_i["b1_GH_ratio"] < best_ep_ratio:
+                    best_ep_ratio = info_i["b1_GH_ratio"]
+                    best_ep_eid = eid
             if collected % 4 == 0 and collected > 0:
                 loss, max_grad = agent.replay()
                 if loss != 0.0:
@@ -1202,9 +1207,19 @@ def train(
                 print(f"    [{status}] Seed {sid:2d}: {r:.6f}")
             print(f"  Reached: {reached_count}/{goal_count_needed}")
 
-            print("  Env0 last actions:")
-            for idx in range(max(0, len(ep_action_logs) - 10), len(ep_action_logs), 5):
-                print("    " + " -> ".join(ep_action_logs[idx : idx + 5]))
+            print("  Best trajectory actions:")
+            if best_ep_eid is not None:
+                best_logs = ep_action_logs[best_ep_eid]
+                print(
+                    f"    Env{best_ep_eid} | best ratio in episode: {best_ep_ratio:.6f}"
+                )
+                for idx in range(0, len(best_logs), 5):
+                    print("      " + " -> ".join(best_logs[idx : idx + 5]))
+                del best_logs
+            else:
+                print("No actions recorded.")
+
+            ep_action_logs.clear()
 
             current_log = (
                 f"Ep {ep:4d} | ε:{epsilon:.3f} | R:{avg_ep_reward:8.2f} "
