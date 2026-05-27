@@ -4,14 +4,18 @@ Analyze all DRL lattice-reduction result files for thesis Chapter 5.
 
 Expected project structure:
 DRL/
-  results/
-    a6up_dim54/
-      dim54_seed0.txt
-      dim54_seed1.txt
-      ...
-    a6up_dim55/
-      dim55_seed0.txt
-      ...
+    results/
+    a7/
+        a7_dim50/
+            dim50_seed0.txt
+            dim50_seed1.txt
+            ...
+        a7_dim51/
+            dim51_seed0.txt
+            ...
+        analysis_outputs/
+            tables/
+            figures/
 
 This script:
 1. Scans all results/a6up_dim*/dim*_seed*.txt files.
@@ -39,7 +43,7 @@ import matplotlib.ticker as ticker
 
 
 TARGET_RATIO = 1.05
-
+VERSION_NAME = "a7"
 
 # ============================================================
 # Path utilities
@@ -239,13 +243,21 @@ def parse_result_file(path: Path) -> Dict[str, Any]:
     }
 
 
-def scan_all_results(results_dir: Path) -> List[Dict[str, Any]]:
+def scan_all_results(
+    version_results_dir: Path, version_name: str
+) -> List[Dict[str, Any]]:
+    """
+    Scan result files under:
+        results/{version_name}/{version_name}_dim*/dim*_seed*.txt
+    """
     rows: List[Dict[str, Any]] = []
 
-    for dim_dir in sorted(results_dir.glob("a6up_dim*")):
+    dim_dir_re = re.compile(rf"{re.escape(version_name)}_dim(\d+)$")
+
+    for dim_dir in sorted(version_results_dir.glob(f"{version_name}_dim*")):
         if not dim_dir.is_dir():
             continue
-        if not DIM_DIR_RE.search(dim_dir.name):
+        if not dim_dir_re.search(dim_dir.name):
             continue
 
         for fpath in sorted(dim_dir.glob("dim*_seed*.txt")):
@@ -900,7 +912,16 @@ def main() -> None:
     if not results_dir.is_dir():
         raise FileNotFoundError(f"Cannot find results directory: {results_dir}")
 
-    out_dir = results_dir / "analysis_outputs"
+    version_name = VERSION_NAME
+    version_results_dir = results_dir / version_name
+
+    if not version_results_dir.is_dir():
+        raise FileNotFoundError(
+            f"Cannot find version results directory: {version_results_dir}"
+        )
+
+    # analysis_outputs 与 a7_dim50/a7_dim51/... 同级
+    out_dir = version_results_dir / "analysis_outputs"
     table_dir = out_dir / "tables"
     fig_dir = out_dir / "figures"
 
@@ -910,7 +931,7 @@ def main() -> None:
 
     rows = scan_all_results(results_dir)
     if not rows:
-        print(f"No valid result files found under {results_dir}")
+        print(f"No valid result files found under {version_results_dir}")
         return
 
     seed_summary = build_seed_summary(rows)
@@ -979,7 +1000,10 @@ def main() -> None:
     report.append("Analysis completed.")
     report.append("=" * 80)
     report.append(f"Project root: {root}")
-    report.append(f"Results directory: {results_dir}")
+    report.append(f"Results root: {results_dir}")
+    report.append(f"Version name: {version_name}")
+    report.append(f"Version results directory: {version_results_dir}")
+    report.append(f"Analysis output directory: {out_dir}")
     report.append(f"Parsed result files: {len(rows)}")
     report.append(f"Parsed dimensions: {', '.join(str(r['dim']) for r in dim_summary)}")
     report.append("")

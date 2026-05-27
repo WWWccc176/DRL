@@ -1066,6 +1066,7 @@ def train(
     goal_count_needed=6,
     goal_threshold=1.05,
     resume_extra=None,
+    run_tag=None,
 ):
     history = {"reward": [], "loss": [], "ratio_min": []}
 
@@ -1203,7 +1204,9 @@ def train(
             best_global_ratio = current_global_best
             no_improve_count = 0
 
-            agent.save_checkpoint(os.path.join(save_dir, f"best_model_dim{dim}.pth"))
+            agent.save_checkpoint(
+                os.path.join(save_dir, f"{run_tag}_best_model_dim{dim}.pth")
+            )
             # 找到产出该 ratio 的种子
             best_sid = min(global_seed_best_ratios, key=global_seed_best_ratios.get)
             bi = global_seed_best_infos[best_sid]
@@ -1278,7 +1281,7 @@ def train(
         agent.step_scheduler()
 
         agent.save_training_state(
-            os.path.join(save_dir, f"a6up_latest_resume_dim{dim}.pth"),
+            os.path.join(save_dir, f"{run_tag}_latest_resume_dim{dim}.pth"),
             extra={
                 "episode": ep,
                 "best_global_ratio": best_global_ratio,
@@ -1341,8 +1344,12 @@ def run_experiment(dim, dataset_dir, results_dir, num_envs=12):
         action_dim=temp_env.num_actions,
     )
 
-    resume_path = os.path.join(dim_results_dir, f"a6up_latest_resume_dim{dim}.pth")
-    model_path = os.path.join(dim_results_dir, f"a6up_best_model_dim{dim}.pth")
+    resume_path = os.path.join(
+        dim_results_dir, f"{version_name}_latest_resume_dim{dim}.pth"
+    )
+    model_path = os.path.join(
+        dim_results_dir, f"{version_name}_best_model_dim{dim}.pth"
+    )
 
     resume_extra = agent.load_training_state(resume_path)
 
@@ -1365,6 +1372,7 @@ def run_experiment(dim, dataset_dir, results_dir, num_envs=12):
         goal_count_needed=6,
         goal_threshold=0.85,
         resume_extra=resume_extra,
+        run_tag=version_name,
     )
 
     # ---- 画图 ----
