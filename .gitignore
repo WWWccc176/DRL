@@ -31,5 +31,5 @@ drl_app/*.pyd
 # --- 数据集 (如果数据文件非常大，比如超过100MB，请取消下面这行的注释) ---
 # dataset/
 # 忽略保存的模型权重和经验池文件
-results/*.pkl
-results/*.pth
+*.pkl
+*.pth

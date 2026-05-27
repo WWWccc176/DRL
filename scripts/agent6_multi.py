@@ -1185,12 +1185,12 @@ def train(
             )
             break
 
-        if no_improve_count >= patience:
-            print(
-                f"\n⏹ [Dim {dim}] No improvement for {patience} ep, stop at ep {ep}. "
-                f"Best: {best_global_ratio:.6f}, Reached: {reached_count}/{goal_count_needed}"
-            )
-            break
+        # if no_improve_count >= patience:
+        #    print(
+        #        f"\n⏹ [Dim {dim}] No improvement for {patience} ep, stop at ep {ep}. "
+        #        f"Best: {best_global_ratio:.6f}, Reached: {reached_count}/{goal_count_needed}"
+        #    )
+        #    break
 
         # ---- 打印 ----
         if ep % print_every == 0:
@@ -1281,7 +1281,7 @@ def run_experiment(dim, dataset_dir, results_dir, num_envs=12):
         save_dir=dim_results_dir,
         patience=80,
         goal_count_needed=6,
-        goal_threshold=1.05,
+        goal_threshold=0.85,
     )
 
     # ---- 画图 ----
