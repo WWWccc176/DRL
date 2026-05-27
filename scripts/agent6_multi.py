@@ -1313,6 +1313,28 @@ if __name__ == "__main__":
     RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
-    DIMS_TO_RUN = [55]
+    DIMS_TO_RUN = [
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+    ]
     for dim in DIMS_TO_RUN:
         run_experiment(dim, DATASET_DIR, RESULTS_DIR)
