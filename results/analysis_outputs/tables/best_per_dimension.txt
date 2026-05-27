@@ -1,9 +1,0 @@
-Best result per dimension
-================================================================================
-Dim 54: best seed=1, best ratio=1.009466, mean ratio=1.169513, success=1/9
-Dim 55: best seed=7, best ratio=1.013784, mean ratio=1.050286, success=6/9
-Dim 56: best seed=9, best ratio=1.030674, mean ratio=1.051791, success=6/9
-Dim 57: best seed=5, best ratio=1.031721, mean ratio=1.050013, success=5/9
-Dim 58: best seed=7, best ratio=1.024788, mean ratio=1.056855, success=2/9
-Dim 59: best seed=1, best ratio=1.044528, mean ratio=1.195177, success=1/9
-Dim 67: best seed=13, best ratio=1.041926, mean ratio=1.055030, success=1/2

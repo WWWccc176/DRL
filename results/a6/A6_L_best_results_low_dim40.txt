@@ -1,0 +1,8 @@
+=== Lattice Reduction Results (Dim 40) ===
+--- Initial LLL State ---
+Best norm(b_1)/GH Ratio: 1.24214686
+Global Orthogonality Defect: 29.76083374
+Max Cosine (Min Angle): 0.60842848
+Min Cosine (Max Angle): 0.00023181
+Best Vector (b_1):
+-387 -143 -798 104 -138 102 170 348 -485 -152 -185 389 712 210 -20 -179 418 27 228 -124 130 397 -598 -132 -132 397 156 -157 300 -304 -49 132 -30 -254 -493 355 -127 1 -240 -9
