@@ -17,8 +17,7 @@ set -o pipefail
 SCRIPT_DIR="${0:A:h}"
 CSV_FILE="${1:-${SCRIPT_DIR}/svp_50_122_top9_unique_seeds.csv}"
 GENERATOR="${2:-${SCRIPT_DIR}/generate_random}"
-OUT_DIR="${3:-${SCRIPT_DIR}/dataset}"
-
+OUT_DIR="${3:-${SCRIPT_DIR:h}}"
 if [[ ! -f "$CSV_FILE" ]]; then
     print -u2 "ERROR: CSV file not found: $CSV_FILE"
     exit 1
@@ -56,5 +55,5 @@ NR == 1 { next }
     }
 }
 ' "$CSV_FILE" | while read -r dim seed; do
-    "$GENERATOR" --dim "$dim" --seed "$seed" > "${OUT_DIR}/svp_dim${dim}_seed${seed}.txt"
+    "$GENERATOR" --dim "$dim" --seed "$seed" > "${OUT_DIR}/svpchallengedim${dim}seed${seed}.txt"
 done
