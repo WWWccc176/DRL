@@ -1,0 +1,642 @@
+position,dimension,norm,seed,contestant,algorithm,subm_date,approx_factor,title_note
+159,122,2704,49,Jim Johnson,Sieving,2022-02-12,0.96937,Modified G6K Workout. Total CPU time (over all threads): 55536.0441s
+160,122,2751,5,Jim Johnson,Sieving,2021-11-13,0.98532,Modified G6K Workout. Total CPU time (over all threads): 125993.6009s.
+161,122,2780,4,Jim Johnson,Sieving,2021-11-6,0.99369,Modified G6K Workout. Total CPU time (over all threads): 87950.5359s.
+162,122,2782,0,Tadanori TERUYA,"Sieving,Other",2019-04-2,0.99546,"Hardware: 2 Xeon E5-2695v4 CPUs with 256 GB RAM (Reedbush).<br />Tool: workout module in G6K.<br />Time: 7099.15355s (wall-clock).<br />Memory: 60.19826GiB (via getrusage)<br />Note: 1 node with 36 threads used, and max. sieving dim. is 107.<br />"
+163,122,2807,0,Tadanori TERUYA,"Sieving,Other",2019-04-2,1.00433,"Hardware: Xeon E5-2695v4 CPUs with 256 GB RAM (Reedbush).<br />Tool: workout module in G6K.<br />Time: 847.89992s (wall-clock).<br />Memory: 17.30980GiB (via getrusage)<br />Note: 1 node with 36 threads used, and max. sieving dim. is 98.<br />"
+164,122,2862,0,Fumitaka YURA,"Sieving,Other",2018-12-27,1.02388,about 12 days by single thread of core i7 960(3.2GHz).
+165,122,2881,123,Nikolaos Chatzis and Konstantinos A. Draziotis,"ENUM,BKZ",2018-07-3,1.02836,An Alternative version of BKZ 2.0 + Randomizing Parallel Enumeration using 4 Threads of an i3 processor...wall time : 3 weeks
+166,122,2913,29,Yuanmi Chen and Phong Nguyen,BKZ,2013-03-13,1.04441,progressive BKZ reduction on 30 different seeds.
+167,121,2640,98,Jim Johnson,Sieving,2022-04-6,0.94854,Modified G6K Workout. Total CPU time (over all threads): 45676.2863s.
+168,121,2715,84,Jim Johnson,Sieving,2022-02-17,0.97645,Modified G6K Workout. Total CPU time (over all threads): 35231.2146s.
+169,121,2727,13,Jim Johnson,Sieving,2021-10-25,0.98049,Modified G6K Workout. Total CPU time (over all threads): 92214.9291s.
+170,121,2776,10,Jim Johnson,Sieving,2021-10-23,0.99498,Modified G6K Workout. Total CPU time (over all threads): 17474.6020s.
+171,121,2777,5,Jim Johnson,Sieving,2021-10-23,0.99752,Modified G6K Workout. Total CPU time (over all threads): 98010.1219s.
+172,121,2780,4,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, Y. Aono, K. Fujisawa","ENUM,BKZ",2020-01-20,0.99706,Preprocess: LLL+BKZ20 (fplll);<br />Main process: parallel DeepBKZ30(480minuites) + parallel-pruned ENUM using Ubiquity Generator framework with 2304 processes;<br />Total runtime 682minuites;<br />Hardware: Supercomputer system ï¿½ITOï¿½ provided Kyushu University
+173,121,2809,2,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2020-01-20,1.00820,Preprocess: LLL+BKZ20 (fplll);<br />Main process: parallel DeepBKZ30(480minuites) + parallel-pruned ENUM using Ubiquity Generator framework with 2304 processes;<br />Total runtime 481minuites;<br />Hardware: Supercomputer system ï¿½ITOï¿½ provided Kyushu University
+174,121,2829,0,Tadanori TERUYA,"Sieving,Other",2019-04-2,1.01670,"Hardware: Xeon E5-2695v4 CPUs with 256 GB RAM (Reedbush).<br />Tool: workout module in G6K.<br />Time: 10813.23176s (wall-clock).<br />Note: 1 node with 36 threads used, and 12 dimensions for free (max. sieving dim. is 109) at the last loop.<br />"
+175,121,2847,0,Hailay Gidey,"ENUM,BKZ",2018-04-26,1.02335,Recursive Progressive BKZ + Randomizing ENUM. Computing time = around 2 days. 48 core Unix server
+176,121,2910,62,Zhongxiang Zheng and Xiaoyun Wang,BKZ,2016-11-21,1.04370,MBKZ with k=12 and beta=40
+177,121,2921,72,Zhongxiang Zheng and Xiaoyun Wang,BKZ,2016-11-10,1.04851,MBKZ
+178,120,2654,897,"Ziyu Zhao, Jintai Ding, Bo-Yin Yang",Sieving,2024-05-4,0.95659,"algorithm: bgj2-epi8 (MSD = 99),<br />machine: dual Intel Xeon Gold 6338 server with 256GB of RAM,<br />spent around 75 core minutes for each seed."
+179,120,2668,163,Jim Johnson,Sieving,2022-03-17,0.95990,Modified G6K Workout. Total CPU time (over all threads): 5450.3399s
+180,120,2706,11,Jim Johnson,Sieving,2022-02-12,0.97586,Modified G6K Workout. Total CPU time (over all threads): 69128.5302s
+181,120,2729,4,Yuga Miyagi and Eiichiro Fujisaki,Sieving,2019-05-1,0.98325,Caluclateion time about 24minutes.<br />Maximum Sieving Dimension: 96.<br />Machine: SGI UV3000 at JAIST @Intel Xeon E5-4655v3 (2.9GHz) .<br />Algorithm :G6K sheme <br />
+182,120,2747,7,Yuga Miyagi and Eiichiro Fujisaki,Sieving,2019-04-27,0.98939,Machine: SGI UV3000 at JAIST @Intel Xeon E5-4655v3 (2.9GHz) .<br />Algorithm :G6K sheme
+183,120,2751,6,Yuga Miyagi and Eiichiro Fujisaki,Sieving,2019-04-27,0.98964,Machine: SGI UV3000 at JAIST @Intel Xeon E5-4655v3 (2.9GHz) .<br />Algorithm :G6K sheme
+184,120,2756,0,Kenji Kashiwabara and Masaharu Fukase,Other,2013-12-9,0.99535,We calculated this using a Let’snote.<br />Our program is written in Java.
+185,120,2830,0,"Yoshinori Aono, Ken Naganuma","ENUM,BKZ",2013-09-19,1.02190,"Preprocess by BKZ 2.0 + ENUM (pruning function with p=0.0001, delta=1.01), about 200 CPU days@XeonE5-2660"
+186,120,2850,0,Kenji Kashiwabara and Masaharu Fukase,Other,2013-08-28,1.02928,"We calculated this for a few weeks using two personal computers, Mac mini and iMac, basically.<br />Our program is written in Java."
+187,120,2851,0,"Po-Chun Kuo, Michael Schneider","ENUM,BKZ",2011-04-6,1.02954,2300 US dollars paid to Amazon EC2
+188,119,2565,118,Jim Johnson,Sieving,2022-06-10,0.92743,Modified G6K Workout. Total CPU time (over all threads): 7025.4592s.
+189,119,2671,13,Jim Johnson,Sieving,2021-09-20,0.96853,"G6K using modified ""Workout"". 12 threads, Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz. Walltime: 6059.8170s. CPU time: 72249.7943s."
+190,119,2787,19,Jim Johnson,Sieving,2021-09-20,1.00943,"G6K using modified ""Workout"". 12 threads, Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz. Walltime: 493.0678s. CPU time: 5797.0678s."
+191,119,2793,0,Tadanori TERUYA,"Sieving,Other",2019-04-22,1.00955,"Hardware: 2 Xeon E5-2695v4 CPUs with 256 GB RAM (Reedbush).<br />Tool: workout module in G6K.<br />Time: 13763.34383s (wall-clock).<br />Used memory: 35.94197GiB (VmSize).<br />Note: 1 node with 36 threads used, and max. sieving dim. is 110.<br />"
+192,119,2825,0,Yuga Miyagi and Eiichiro Fujisaki,Sieving,2019-04-22,1.02126,Machine: SGI UV3000 at JAIST @Intel Xeon E5-4655v3 (2.9GHz) .<br />Algorithm : G6K sheme
+193,119,2831,5,Satoshi Nakamura and Masaya Yasuda,Other,2019-01-17,1.02237,Improved DeepBKZ with blocksize 45
+194,119,2854,0,Hailay Gidey,"ENUM,BKZ",2018-04-22,1.03179,"Recursive Progressive BKZ-119 + Randomizing Enumeration, Computing time (Rough estimate)= 4 days -in a 48 core Unix server"
+195,119,2863,10,Junpei Yamaguchi and Masaya Yasuda,Other,2017-03-22,1.03332,
+196,119,2904,0,Yuntao Wang; Yoshinori Aono; Takuya Hayashi; Tsuyoshi Takagi,"ENUM,BKZ",2016-01-25,1.04985,"Progressive BKZ+Randomizing ENUM (#bases=5, prob=2*1.05^(-119)/10, radius=1.05GH(L)), Computing time=209.43 single core hours"
+197,118,2625,1,Jim Johnson,Sieving,2021-09-20,0.95491,"G6K using modified ""Workout"". 12 threads, Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz. Walltime: 666.9680s. CPU time:7665.0885s."
+198,118,2782,0,Kenji Kashiwabara and Masaharu Fukase,Other,2013-08-12,1.00811,"We calculated this for a few weeks using two personal computers, Mac mini and iMac, basically. The program is written in Java."
+199,118,2868,8,Yuanmi Chen and Phong Nguyen,ENUM,2013-02-13,1.04441,
+200,117,2612,214,Jim Johnson,Sieving,2022-04-2,0.95123,Modified G6K Workout. Total CPU time (over all threads): 34237.6475s
+201,117,2653,148,Jim Johnson,Sieving,2022-03-30,0.97000,Modified G6K Workout. Total CPU time (over all threads): 20522.1614s
+202,117,2659,80,Jim Johnson,Sieving,2022-02-12,0.96956,Modified G6K Workout. Total CPU time (over all threads): 36071.5379s
+203,117,2680,48,Jim Johnson,Sieving,2021-09-19,0.97611,"G6K using modified ""Workout"". 12 threads, Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz. Walltime: 517.0156s. CPU time: 6040.3820s."
+204,117,2769,0,Tadanori TERUYA,"Sieving,Other",2019-04-10,1.00982,"Hardware: 2 Xeon E5-2695v4 CPUs with 256 GB RAM (Reedbush).<br />Tool: workout module in G6K.<br />Time: 1034.73244s (wall-clock).<br />Used memory: 18.30859GiB (VmSize).<br />Note: 1 node with 36 threads used, and max. sieving dim. is 99.<br />"
+205,117,2782,3,Satoshi Nakamura and Masaya Yasuda,Other,2018-12-1,1.01620,"DeepBKZ44 with additional size-reduction<br />2.60GHz, single core, 3days"
+206,117,2803,0,Hailay Gidey,"ENUM,BKZ",2018-03-29,1.02227,Recursive Progressive-BKZ + Randomising Enumeration... costs around 30 hours
+207,117,2840,10,Junpei Yamaguchi and Masaya Yasuda,Other,2017-04-10,1.03858,
+208,117,2841,0,Yuntao Wang; Yoshinori Aono; Takuya Hayashi; Tsuyoshi Takagi,"ENUM,BKZ",2016-01-26,1.03619,"Progressive BKZ+Randomizing ENUM (#bases=20, prob=2*1.05^(-117)/7, radius=1.05GH(L)),<br />Computing time=31.52 single core days"
+209,116,2608,342,Jim Johnson,Sieving,2022-05-4,0.95540,Modified G6K Workout. Total CPU time (over all threads): 6714.4823s.
+210,116,2638,211,Jim Johnson,Sieving,2022-02-12,0.96540,Modified G6K Workout. Total CPU time (over all threads): 2920.2597s.
+211,116,2663,102,Jim Johnson,Sieving,2021-11-5,0.97291,Modified G6K Workout. Total CPU time (over all threads): 21539.4970s.
+212,116,2691,45,Jim Johnson,Sieving,2021-09-19,0.98546,"G6K using modified ""Workout"". 12 threads, Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz. Walltime: 538.4388s. CPU time: 6304.3379s."
+213,116,2737,46,Jim Johnson,Sieving,2021-09-19,1.00299,"G6K using modified ""Workout"". 12 threads, Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz. Walltime: 626.6550s. CPU time: 7338.3303s."
+214,116,2743,0,Thorsten Kleinjung,Sieving,2014-05-2,1.00492,
+215,116,2764,0,Kenji Kashiwabara and Masaharu Fukase,Other,2014-03-21,1.01287,"This calculation takes a month on Mac mini(Mid 2010,2.66 GHz Intel Core 2 Duo).<br />We used the information of short vectors obtained by the previous calculation.<br />"
+216,116,2786,0,Kenji Kashiwabara and Masaharu Fukase,Other,2013-08-3,1.02075,"Our algorithm, called ESS, is similar to Schnorr’s random sampling algorithm.<br />We calculated this for a few weeks using two personal computers, Mac mini and iMac.<br />Our program is written in Java.<br />We are going to write a paper about our algorithm.<br />"
+217,116,2825,0,"Po-Chun Kuo, Michael Schneider","ENUM,BKZ",2011-04-1,1.03512,8 GTX480<br />time = 113699 second
+218,115,2587,73,Jim Johnson,Sieving,2022-02-12,0.95104,Modified G6K Workout. Total CPU time (over all threads): 11853.8462s
+219,115,2649,1,Yuga Miyagi and Eiichiro Fujisaki,Sieving,2019-04-13,0.97544,Machine: SGI UV3000 at JAIST @Intel Xeon E5-4655v3 (2.9GHz) .<br />Algorithm : G6K sheme <br />
+220,115,2695,3,Yuga Miyagi and Eiichiro Fujisaki,Sieving,2019-04-10,0.99223,Machine: SGI UV3000 at JAIST @Intel Xeon E5-4655v3 (2.9GHz) .<br />Algorithm : G6K sheme .
+221,115,2697,1,Yuga Miyagi and Eiichiro Fujisaki,Sieving,2019-04-10,0.99301,Machine: SGI UV3000 at JAIST @Intel Xeon E5-4655v3 (2.9GHz) .<br />Algorithm :G6K sheme
+222,115,2699,3,Junpei Yamaguchi and Masaya Yasuda,Other,2017-06-23,0.99339,
+223,115,2779,19,Junpei Yamaguchi and Masaya Yasuda,Other,2017-06-23,1.01939,
+224,115,2780,11,Junpei Yamaguchi and Masaya Yasuda,Other,2017-06-23,1.02419,
+225,115,2790,9,Junpei Yamaguchi and Masaya Yasuda,Other,2017-03-25,1.02581,
+226,115,2813,0,Yuntao Wang; Yoshinori Aono; Takuya Hayashi; Tsuyoshi Takagi,"ENUM,BKZ",2016-01-25,1.03413,"Progressive BKZ+Randomizing ENUM (#bases=4, prob=2*1.05^(-115)/8, radius=1.05GH(L)), Computing time=90.5 single core hours"
+227,114,2555,210,Jim Johnson,Sieving,2022-02-12,0.94181,Modified G6K Workout. Total CPU time (over all threads): 9094.7819s
+228,114,2624,113,Jim Johnson,Sieving,2021-10-31,0.96914,Modified G6K Workout. Total CPU time (over all threads): 8244.1781s..
+229,114,2654,91,Jim Johnson,Sieving,2021-09-18,0.98346,"G6K using modified ""Workout"". 12 threads, Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz. Walltime: 903.6592s. CPU time: 10621.0831s."
+230,114,2697,0,Kenji Kashiwabara and Masaharu Fukase,Other,2013-07-12,0.99604,We use our original algorithm called ESS written in JAVA.
+231,114,2735,0,"Yoshinori Aono, Ken Naganuma",BKZ,2013-02-14,1.01027,49 CPU days@AMD Opteron 6276
+232,114,2778,0,"Po-Chun Kuo, Michael Schneider","ENUM,BKZ",2011-03-21,1.02605,"GPUENUM, GTX 480 * 8, total time = 139382 sec"
+233,113,2559,3106,Jim Johnson,Sieving,2022-09-6,0.94808,Modified G6K Workout. Total CPU time (over all threads): 2667.8755s.
+234,113,2563,2664,Jim Johnson,Sieving,2022-08-29,0.95319,Modified G6K Workout. Total CPU time (over all threads): 5128.2865s.
+235,113,2564,254,Jim Johnson,Sieving,2022-02-12,0.95387,Modified G6K Workout. Total CPU time (over all threads): 9415.1339s
+236,113,2612,103,Jim Johnson,Sieving,2021-11-28,0.96688,Modified G6K Workout. Total CPU time (over all threads): 16333.0544s.
+237,113,2622,5,"N. Tateiwa, Y. Shinano, K. Yamamura, A. Yoshida, S. Kaji, M. Yasuda, K. Fujisawa",BKZ,2021-10-14,0.97459,solver: CMAP-LAP<br />main algorithm: parallel sharing DeepBKZ;<br />preprocess: LLL (fplll);<br />wall time: 4363 seconds;<br />machine: CPU-Cluster 144 cores (including 143 workers);<br />cpu: ntel(R) Xeon(R) CPU E5-2640 v3 @ 2.30 GHz<br />memory: 256 GB / node
+238,113,2648,25,Jim Johnson,Sieving,2021-09-18,0.98312,"G6K using modified ""Workout"". 12 threads, Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz. Walltime: 681.1449s. CPU time: 7980.5057s."
+239,113,2664,5,Jim Johnson,Sieving,2021-09-18,0.99039,"G6K using modified ""Workout"". 12 threads, Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz. Walltime: 621.8540s. CPU time: 7218.7686s."
+240,113,2681,1,Junpei Yamaguchi and Masaya Yasuda,Other,2017-03-23,0.99409,
+241,113,2739,999,Zhongxiang Zheng and Xiaoyun Wang,BKZ,2016-10-24,1.01459,MBKZ
+242,113,2804,0,Yuntao Wang; Yoshinori Aono; Takuya Hayashi; Tsuyoshi Takagi,"ENUM,BKZ",2016-02-9,1.03897,"Progressive BKZ+Randomizing ENUM (#bases=1, prob=2*1.05^(-113)/8, radius=1.05GH(L)),<br />Computing time=10.72 single core hours"
+243,113,2826,0,Alex Li,BKZ,2015-04-28,1.04693,
+244,112,2521,626,Jim Johnson,Sieving,2022-03-23,0.93801,Modified G6K Workout. Total CPU time (over all threads): 4704.7710s
+245,112,2580,283,Jim Johnson,Sieving,2022-02-12,0.96002,Modified G6K Workout. Total CPU time (over all threads): 12314.7863s.
+246,112,2595,22,Jim Johnson,Sieving,2021-10-18,0.96839,Modified G6K Workout. Total CPU time (over all threads): 7062.1114s.
+247,112,2653,3,Junpei Yamaguchi and Masaya Yasuda,Other,2017-03-25,0.98696,
+248,112,2683,9,Junpei Yamaguchi and Masaya Yasuda,Other,2017-03-25,0.99936,
+249,112,2708,0,Thorsten Kleinjung,Sieving,2014-01-14,1.00979,
+250,112,2715,0,Yuanmi Chen and Phong Nguyen,Other,2011-03-30,1.01251,
+251,112,2748,0,Po-Chun Kuo,"ENUM,BKZ",2011-02-17,1.02466,
+252,112,2781,0,Yuanmi Chen and Phong Nguyen,Other,2010-06-5,1.03720,
+253,111,2536,371,Jim Johnson,Sieving,2022-03-27,0.94714,Modified G6K Workout. Total CPU time (over all threads): 10356.6843s
+254,111,2556,115,Jim Johnson,Sieving,2021-11-29,0.95781,Modified G6K Workout. Total CPU time (over all threads): 4578.1996s.
+255,111,2593,114,Jim Johnson,Sieving,2021-11-29,0.96938,Modified G6K Workout. Total CPU time (over all threads): 6169.8599s.
+256,111,2597,29,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-11-15,0.96979,Preprocess: LLL+BKZ20 (fplll);<br />Main process: parallel DeepBKZ30 + parallel-pruned ENUM using Ubiquity Generator framework with 2000 processes;<br />Total runtime 791.5 seconds;<br />Hardware: Supercomputer system ï¿½ITOï¿½ provided Kyushu University<br />
+257,111,2635,30,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-11-15,0.98382,Preprocess: LLL+BKZ20 (fplll);<br />Main process: parallel DeepBKZ30 + parallel-pruned ENUM using Ubiquity Generator framework with 2000 processes;<br />Total runtime 541.4 seconds;<br />Hardware: Supercomputer system ï¿½ITOï¿½ provided Kyushu University
+258,111,2660,8,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-11-14,0.99467,Preprocess: LLL+BKZ20 (fplll); Main process: parallel DeepBKZ30 + parallel-pruned ENUM using Ubiquity Generator framework with 2000 processes; Total runtime 611.4 seconds; Hardware: Supercomputer system ï¿½ITOï¿½ provided Kyushu University
+259,111,2661,12,Kyle Malone,Sieving,2019-05-13,0.99370,Intel Core i5-5300U. Tool: workout module in G6K. 1 node with 32 threads. Time: 1243.1053s. Maximum sieving dimension: 87.
+260,111,2684,0,Junpei Yamaguchi and Masaya Yasuda,Other,2017-03-16,1.00332,
+261,111,2721,0,Junpei Yamaguchi and Masaya Yasuda,Other,2017-03-14,1.01699,
+262,111,2731,0,Yuntao Wang; Yoshinori Aono; Takuya Hayashi; Tsuyoshi Takagi,"ENUM,BKZ",2016-01-25,1.02096,"Progressive BKZ+Randomizing ENUM (#bases=1, prob=2*1.05^(-111)/5, radius=1.05GH(L)), Computing time=6.18 single core hours"
+263,110,2420,83,Jim Johnson,Sieving,2022-02-17,0.90756,Modified G6K Workout. Total CPU time (over all threads): 3154.3346s.
+264,110,2543,42,Jim Johnson,Sieving,2021-10-19,0.95889,Modified G6K Workout. Total CPU time (over all threads): 12065.5184s.
+265,110,2620,41,Jim Johnson,Sieving,2021-10-19,0.98479,Modified G6K Workout. Total CPU time (over all threads): 4508.5677s.
+266,110,2621,4,Junpei Yamaguchi and Masaya Yasuda,Other,2017-03-15,0.98355,
+267,110,2636,2,Felix Fontein,"BKZ,Other",2012-09-11,0.99285,"BKZ with blocksize 30, reduction parameter 0.99 and Deep Insertions to a block of 40 vectors and to the first 40 vectors. Found this vector after 5.36 days and 582\’528 calls to the SVP oracle, out of which 13.75% were successful. The total running time of BKZ was 8.93 days, and a total of 1\’219\’647 calls were made to the SVP oracle (success rate 13.49%)."
+268,110,2699,0,Yuanmi Chen and Phong Nguyen,Other,2010-05-28,1.01591,
+269,109,2495,53,Jim Johnson,Sieving,2021-12-3,0.94276,Modified G6K Workout. Total CPU time (over all threads): 3012.3414s.
+270,109,2559,2,"N. Tateiwa, Y. Shinano, K. Yamamura, A. Yoshida, S. Kaji, M. Yasuda, K. Fujisawa",BKZ,2021-10-12,0.96465,solver: CMAP-LAP<br />main algorithm: parallel sharing DeepBKZ;<br />preprocess: LLL (fplll);<br />wall time: 2989 seconds;<br />machine: CPU-Cluster 144 cores (including 143 workers);<br />cpu: ntel(R) Xeon(R) CPU E5-2640 v3 @ 2.30 GHz<br />memory: 256 GB / node
+271,109,2613,8,Junpei Yamaguchi and Masaya Yasuda,Other,2017-03-21,0.98360,
+272,109,2658,9,Junpei Yamaguchi and Masaya Yasuda,Other,2017-03-14,1.00034,
+273,109,2674,3,Junpei Yamaguchi and Masaya Yasuda,Other,2017-03-14,1.00767,
+274,109,2703,0,Masaharu Fukase and Kazunori Yamaguchi,Other,2016-03-30,1.01754,
+275,109,2737,0,Alex Li,BKZ,2015-04-28,1.03057,
+276,109,2783,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-12-18,1.04769,
+277,108,2478,371,Jim Johnson,Sieving,2022-03-6,0.93974,Modified G6K Workout. Total CPU time (over all threads): 3516.5934s.
+278,108,2508,0,Yuanmi Chen and Phong Nguyen,Other,2010-06-16,0.95162,
+279,108,2755,0,Yuanmi Chen and Phong Nguyen,Other,2010-05-30,1.04519,
+280,107,2429,1340,Jim Johnson,Sieving,2022-02-22,0.92459,Modified G6K Workout. Total CPU time (over all threads): 1699.9454s.
+281,107,2493,518,Jim Johnson,Sieving,2022-02-12,0.95184,Modified G6K Workout. Total CPU time (over all threads): 2571.3100s.
+282,107,2513,360,Jim Johnson,Sieving,2021-11-9,0.95594,Modified G6K Workout. Total CPU time (over all threads): 1799.7559s.
+283,107,2540,130,Jim Johnson,Sieving,2021-11-2,0.96555,Modified G6K Workout. Total CPU time (over all threads): 2552.7975s.
+284,107,2541,77,Jim Johnson,Sieving,2021-10-24,0.96871,Modified G6K Workout. Total CPU time (over all threads): 3403.6187s.
+285,107,2549,28,Jim Johnson,Sieving,2021-10-24,0.97216,Modified G6K Workout. Total CPU time (over all threads): 863.2907s.
+286,107,2552,1,"N. Tateiwa, Y. Shinano, K. Yamamura, A. Yoshida, S. Kaji, M. Yasuda, K. Fujisawa",BKZ,2021-02-8,0.97170,preprocess: BKZ20 (fplll);<br />main: parallel DeepBKZ30 ( wall time: 320 sec );<br />process: 144;<br />cpu: Intel(R) Xeon(R) CPU E5-2640 v3 @2.60GHz;
+287,107,2566,9,Junpei Yamaguchi and Masaya Yasuda,Other,2017-03-11,0.97800,
+288,107,2626,0,Artur Mariano,Sieving,2015-05-22,1.00056,HashSieve - LUSA
+289,107,2713,0,Artur Mariano,Sieving,2015-05-22,1.03379,HashSieve - LUSA
+290,107,2716,0,Artur Mariano,Sieving,2015-05-22,1.03490,HashSieve - LUSA
+291,107,2719,0,Artur Mariano,Sieving,2015-05-22,1.03609,HashSieve - LUSA
+292,107,2720,0,Artur Mariano,Sieving,2015-05-22,1.03657,HashSieve - LUSA
+293,107,2721,0,Artur Mariano,Sieving,2015-05-22,1.03688,HashSieve - LUSA
+294,107,2722,0,Artur Mariano,Sieving,2015-05-22,1.03721,HashSieve - LUSA
+295,107,2724,8,"Po-Chun Kuo, Michael Schneider","ENUM,BKZ",2011-03-12,1.03655,GPU ENUM with Extreme Pruning<br />GTX480<br />time = 9814
+296,107,2756,4,"Michael Schneider, ï¿½zgï¿½r Dagdelen, Jan Reichelt","ENUM,BKZ",2011-02-14,1.04778,running-time: 38266
+297,106,2393,563,Jim Johnson,Sieving,2022-05-22,0.91310,Modified G6K Workout. Total CPU time (over all threads): 931.3961s.
+298,106,2464,513,Jim Johnson,Sieving,2022-02-12,0.94289,Modified G6K Workout. Total CPU time (over all threads): 533.6848s.
+299,106,2492,73,Michael Burger,"ENUM,BKZ",2019-12-7,0.95357,Solved with https://github.com/MiBu84/p3enum<br />with 24 Threads in 8604 seconds.
+300,106,2551,8,Junpei Yamaguchi and Masaya Yasuda,Other,2017-03-11,0.97640,
+301,106,2656,3,Junpei Yamaguchi and Masaya Yasuda,Other,2017-03-10,1.01677,
+302,106,2667,0,Thorsten Kleinjung,Sieving,2013-12-17,1.01754,
+303,106,2668,0,Urs Wagner,Other,2012-05-7,1.01795,LLL (randomized and with heuristics)
+304,106,2692,0,Po-Chun Kuo,"ENUM,BKZ",2011-02-2,1.02695,
+305,106,2704,0,Yuanmi Chen and Phong Nguyen,Other,2010-05-26,1.03139,
+306,105,2390,7251,Jim Johnson,Sieving,2022-07-11,0.92152,Modified G6K Workout. Total CPU time (over all threads): 966.4982s.
+307,105,2432,1220,Jim Johnson,Sieving,2021-12-2,0.93617,Modified G6K Workout. Total CPU time (over all threads): 559.4582s.
+308,105,2488,468,Jim Johnson,Sieving,2021-11-24,0.95628,Modified G6K Workout. Total CPU time (over all threads): 984.1629s.
+309,105,2493,185,Jim Johnson,Sieving,2021-10-11,0.95775,Modified G6K Workout Total CPU time: 2794.2414s.
+310,105,2515,169,Jim Johnson,Sieving,2021-10-11,0.96500,Modified G6K Workout Total CPU time: 1559.0357s.
+311,105,2541,122,Nikolaos Chatzis and Konstantinos A. Draziotis,"ENUM,BKZ",2018-04-18,0.97905,An Alternative version of BKZ 2.0 + Randomizing Parallel Enumeration using 4 Threads...wall time : 3h
+312,105,2604,1,Junpei Yamaguchi and Masaya Yasuda,Other,2017-03-9,1.00237,
+313,105,2643,997,Zhongxiang Zheng and Xiaoyun Wang,BKZ,2016-09-18,1.01919,
+314,105,2655,997,Zhongxiang Zheng and Xiaoyun Wang,BKZ,2016-09-18,1.02377,"We test our new BKZ method in Basis with seed 997,998 and 999, three vectors are shorter than 1.05 GH(L), and two of them are shorter than the former one."
+315,105,2659,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-12-18,1.02023,
+316,105,2665,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-12-18,1.02249,
+317,105,2687,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-12-18,1.03078,
+318,105,2731,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-12-18,1.04782,
+319,105,2734,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-12-18,1.04883,
+320,104,2403,4081,Jim Johnson,Sieving,2022-02-12,0.92586,Modified G6K Workout. Total CPU time (over all threads): 1043.5592s.
+321,104,2463,319,Jim Johnson,Sieving,2021-10-20,0.94948,Modified G6K Workout. Total CPU time (over all threads): 2621.6085s.
+322,104,2511,228,Jim Johnson,Sieving,2021-10-20,0.96913,Modified G6K Workout. Total CPU time (over all threads): 1574.5198s.
+323,104,2516,35,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-11-14,0.97173,"preprocess LLL, BKZ20(fplll); parallel DeepBKZ30 with 120 processes; total runtime 551.4 seconds"
+324,104,2520,85,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-11-14,0.97010,"preprocess LLL, BKZ20(fplll); parallel DeepBKZ30 with 120 processes; total runtime 213.6 seconds"
+325,104,2529,82,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-11-14,0.97719,"preprocess LLL, BKZ20(fplll); parallel DeepBKZ30 with 120 processes; total runtime 431.8 seconds"
+326,104,2540,77,Michael Burger,"ENUM,Sieving",2019-04-12,0.98234,Solved with: <br />https://github.com/MiBu84/p3enum<br />and 24 T in 443.3 seconds.
+327,104,2546,10,Junpei Yamaguchi and Masaya Yasuda,Other,2017-02-21,0.98482,
+328,104,2594,0,Kenji Kashiwabara and Masaharu Fukase,Other,2013-12-13,1.00387,Our program is written in Java.
+329,104,2601,0,Kenji Kashiwabara and Masaharu Fukase,Other,2013-07-3,1.00662,We used our original Algorithm called ESS.<br />Our program is written in Java.<br />We calculated this on Mac mini for six days.
+330,104,2644,0,Urs Wagner,Other,2010-11-10,1.02322,
+331,104,2668,0,Yuanmi Chen and Phong Nguyen,Other,2010-06-11,1.03258,
+332,104,2694,0,Yuanmi Chen and Phong Nguyen,Other,2010-06-11,1.04265,
+333,104,2712,0,Yuanmi Chen and Phong Nguyen,Other,2010-05-25,1.04967,
+334,103,2396,6787,Jim Johnson,Sieving,2022-05-14,0.92662,Modified G6K Workout. Total CPU time (over all threads): 658.1176s.
+335,103,2409,5099,Jim Johnson,Sieving,2022-05-11,0.93476,Modified G6K Workout. Total CPU time (over all threads): 227.3853s.
+336,103,2410,2567,Jim Johnson,Sieving,2022-02-12,0.93357,Modified G6K Workout. Total CPU time (over all threads): 606.5666s
+337,103,2436,246,Jim Johnson,Sieving,2021-11-11,0.94634,Modified G6K Workout. Total CPU time (over all threads): 888.5422s.
+338,103,2465,75,Jim Johnson,Sieving,2021-10-9,0.95648,Modified G6K Workout. Total CPU time: 1737.7788s.
+339,103,2508,3,"N. Tateiwa, Y. Shinano, K. Yamamura, A. Yoshida, S. Kaji, M. Yasuda, K. Fujisawa",BKZ,2021-10-8,0.97168,solver: CMAP-LAP<br />main algorithm: parallel sharing DeepBKZ;<br />preprocess: LLL (fplll);<br />wall time: 3139 seconds;<br />machine: CPU-Cluster 144 cores (including 143 workers);<br />cpu: ntel(R) Xeon(R) CPU E5-2640 v3 @ 2.30 GHz<br />memory: 256 GB / node
+340,103,2520,10,Junpei Yamaguchi and Masaya Yasuda,Other,2017-02-17,0.97800,
+341,103,2604,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-12-18,1.00776,
+342,103,2668,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-12-18,1.03280,
+343,103,2672,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-12-18,1.03409,
+344,103,2675,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-12-18,1.03522,
+345,103,2685,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-12-18,1.03909,
+346,103,2700,0,Alex Li,"BKZ,Other",2014-12-13,1.04494,
+347,102,2369,2319,Jim Johnson,Sieving,2022-04-5,0.92020,Modified G6K Workout. Total CPU time (over all threads): 82.3066s.
+348,102,2404,1802,Jim Johnson,Sieving,2022-02-12,0.93470,Modified G6K Workout. Total CPU time (over all threads): 225.1741s.
+349,102,2424,1186,Jim Johnson,Sieving,2021-11-12,0.94400,Modified G6K Workout. Total CPU time (over all threads): 554.4056s.
+350,102,2446,832,Jim Johnson,Sieving,2021-11-2,0.95301,Modified G6K Workout. Total CPU time (over all threads): 1111.0380s.
+351,102,2452,599,Jim Johnson,Sieving,2021-10-21,0.95711,Modified G6K Workout. Total CPU time (over all threads): 346.1556s.
+352,102,2475,354,Jim Johnson,Sieving,2021-10-19,0.96460,Modified G6K Workout. Total CPU time (over all threads): 952.0602s.
+353,102,2478,89,Michael Burger,"ENUM,BKZ",2019-11-14,0.96879,Solved with code:<br />https://github.com/MiBu84/p3enum<br />in 4976s with 24 threads.<br />
+354,102,2479,24,Masaya Yasuda,Other,2018-04-11,0.96406,DeepBKZ-40 with early-abort strategy
+355,102,2512,10,Junpei Yamaguchi and Masaya Yasuda,Other,2017-02-16,0.98118,
+356,102,2555,0,Kenji Kashiwabara and Masaharu Fukase,Other,2013-06-30,0.99562,We used our original algorithm called ESS.<br />Our program is written in JAVA.<br />We calculated this on Mac mini for three days.<br />
+357,102,2597,0,Po-Chun Kuo,"ENUM,Other",2011-01-11,1.01207,
+358,102,2642,0,Yuanmi Chen and Phong Nguyen,Other,2010-06-14,1.02973,
+359,102,2672,0,Yuanmi Chen and Phong Nguyen,Other,2010-05-24,1.04150,
+360,101,2343,5162,Jim Johnson,Sieving,2022-05-27,0.91562,Modified G6K Workout. Total CPU time (over all threads): 426.4117s.
+361,101,2362,3128,Jim Johnson,Sieving,2022-05-23,0.92714,Modified G6K Workout. Total CPU time (over all threads): 172.2286s.
+362,101,2379,2438,Jim Johnson,Sieving,2022-04-4,0.92900,Modified G6K Workout. Total CPU time (over all threads): 206.6082s.
+363,101,2383,1423,Jim Johnson,Sieving,2021-10-28,0.93367,Modified G6K Workout. Total CPU time (over all threads): 297.4876s..
+364,101,2446,891,Michael Burger,"ENUM,BKZ",2019-01-11,0.95905,"CPU-parallel pruned enumeration on BKZ2.0-56 reduced bases from fplll. Running with 16T, processing 56 bases, Runtime 718 seconds."
+365,101,2448,460,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-27,0.95913,
+366,101,2617,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-12-18,1.02159,
+367,101,2647,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-12-18,1.03327,
+368,101,2650,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-12-18,1.03441,
+369,101,2665,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-12-18,1.04037,
+370,101,2670,0,Alex Li,"BKZ,Other",2014-12-4,1.04225,
+371,100,2214,46937,"Ziyu Zhao, Jintai Ding, Bo-Yin Yang",Sieving,2024-05-4,0.87027,"algorithm: bgj1-epi8,<br />machine: dual Intel Xeon Gold 6338 server with 256GB of RAM,<br />spent around 45 core seconds for each seed (MSD = 82)."
+372,100,2334,4582,Jim Johnson,Sieving,2022-09-8,0.92105,Modified G6K Workout. Total CPU time (over all threads): 152.3779s.
+373,100,2337,3473,Jim Johnson,Sieving,2022-04-14,0.91812,Modified G6K Workout. Total CPU time (over all threads): 333.5786s.
+374,100,2353,3234,Jim Johnson,Sieving,2022-04-14,0.92784,Modified G6K Workout. Total CPU time (over all threads): 439.2818s.
+375,100,2365,1342,Jim Johnson,Sieving,2022-03-3,0.92959,Modified G6K Workout. Total CPU time (over all threads): 268.1074s.
+376,100,2367,218,Michael Burger,"ENUM,BKZ",2018-10-21,0.93331,"Extreme pruned BKZ 60 from fplll library run in parallel and extreme pruned enumeration to find the vector (Time BKZ to create 20 candidates in parallel ~4000sec, Time Enum 400 sec)"
+377,100,2422,26,Felix Fontein,"BKZ,Other",2013-04-5,0.95440,BKZ-30 + Deep Insertions to the first 50 vectors
+378,100,2526,1,Felix Fontein,"BKZ,Other",2012-08-16,0.99609,"Appeared during BKZ-30 with Deep Insertions to the first 50 vectors without preprocessing and with alpha = 0.99. The vector was not in the final result.<br />36504 enumerations were done until the vector was found, 5028 of them resulted in a shorter vector inserted; the running time was 7.6 hours.<br />The vector was also contained in the final output of three BKZ-40 runs with different configurations of Deep Insertions (for the 40 first vectors, a block of 50 vectors, or both the first 50 and a block of 50 vectors)."
+379,100,2571,0,"Po-Chun Kuo, Michael Schneider","ENUM,BKZ",2011-03-8,1.01252,GPU Extreme Pruning Enum<br />NV GTX480<br />34m10.055s
+380,100,2610,0,"Michael Schneider, ï¿½zgï¿½r Dagdelen, Jan Reichelt","ENUM,Other",2010-11-14,1.02760,time: 14825s
+381,100,2638,0,Yuanmi Chen and Phong Nguyen,Other,2010-06-10,1.03872,
+382,100,2645,0,Yuanmi Chen and Phong Nguyen,Other,2010-05-12,1.04144,
+383,99,2338,5569,Jim Johnson,Sieving,2022-02-12,0.92175,Modified G6K Workout. Total CPU time (over all threads): 268.6027s.
+384,99,2374,1679,Jim Johnson,Sieving,2021-11-1,0.93968,Modified G6K Workout. Total CPU time (over all threads): 1037.0835s..
+385,99,2397,1445,Jim Johnson,Sieving,2021-10-30,0.95026,Modified G6K Workout. Total CPU time (over all threads): 215.9140s.
+386,99,2409,1251,Jim Johnson,Sieving,2021-10-24,0.95080,Modified G6K Workout. Total CPU time (over all threads): 114.0931s.
+387,99,2417,1145,Jim Johnson,Sieving,2021-10-24,0.95701,Modified G6K Workout. Total CPU time (over all threads): 308.5240s.
+388,99,2423,1042,Jim Johnson,Sieving,2021-10-23,0.95988,Modified G6K Workout. Total CPU time (over all threads): 617.0056s.
+389,99,2425,691,Jim Johnson,Sieving,2021-10-18,0.95611,Modified G6K Workout. Total CPU time (over all threads): 564.9005s.
+390,99,2433,603,Jim Johnson,Sieving,2021-10-17,0.95951,Modified G6K Workout. Total CPU time (over all threads): 735.6614s.
+391,99,2437,487,Jim Johnson,Sieving,2021-10-15,0.96318,Modified G6K Workout Total CPU time (all threads): 313.4039s..
+392,99,2438,432,Jim Johnson,Sieving,2021-09-28,0.96107,Modified G6K. Total CPU time 179.5788s.
+393,99,2491,423,Michael Burger,"ENUM,BKZ",2018-10-18,0.98819,"BKZ-62 reduction with extreme pruning within fplll library followed by OpenMP-parallelized, parametrized extreme pruned enumeration.<br /><br />Total runtime: 15 minutes (897 s) with 32 Threads on dual socket Intel(R) Xeon(R) CPU E5-2698 machine."
+394,99,2503,400,Nikolaos Chatzis and Konstadinos A. Draziotis,"ENUM,BKZ",2018-04-14,0.99015,BKZ 2.0 + Randomizing Parallel Enumeration using 4 Threads ...wall time : 120m
+395,99,2547,999,"Satoshi Nakamura,Michiko Ooka,Junpei Yamaguchi,Masaya Yasuda",Other,2017-11-28,1.00729,DeepBKZ-40 with full enumeration
+396,99,2604,999,Zhongxiang Zheng and Xiaoyun Wang,BKZ,2016-09-7,1.02982,
+397,99,2606,998,Zhongxiang Zheng and Xiaoyun Wang,BKZ,2016-09-7,1.02872,
+398,99,2635,997,Zhongxiang Zheng and Xiaoyun Wang,BKZ,2016-09-7,1.04510,"We test our new BKZ method in Basis with seed 997, 998 and 999, all of them get results after a few hours"
+399,99,2642,0,Fï¿½bio Correia and Artur Mariano,ENUM,2014-11-18,1.04216,
+400,99,2659,0,Fï¿½bio Correia and Artur Mariano,ENUM,2014-11-18,1.04913,
+401,99,2660,0,Fï¿½bio Correia and Artur Mariano,ENUM,2014-11-18,1.04939,
+402,98,2260,6139,Jim Johnson,Sieving,2022-02-12,0.89819,Modified G6K Workout. Total CPU time (over all threads): 88.9675s.
+403,98,2354,239,Jim Johnson,Sieving,2021-10-15,0.93629,Modified G6K Workout Total CPU time: 182.6984s.
+404,98,2418,129,Jim Johnson,Sieving,2021-10-12,0.96313,Modified G6K Workout Total CPU time: 170.8330s.
+405,98,2431,111,Jim Johnson,Sieving,2021-10-2,0.96458,Modified G6K Workout. Total CPU time: 286.4140s.
+406,98,2454,33,Jim Johnson,Sieving,2021-09-27,0.97497,Modified G6K Workout. Total CPU time: 313.6271s.
+407,98,2496,27,Michael Burger,"ENUM,BKZ",2019-01-10,0.99398,"CPU-parallel pruned enumeration on a fplll-BKZ2.0-56 reduced basis. Running with 16T, processing 4 bases, runtime 107 sec."
+408,98,2514,116,Nikolaos Chatzis and Konstadinos A. Draziotis,"ENUM,BKZ",2018-04-14,0.99644,BKZ 2.0 + Randomizing Parallel Enumeration using 4 Threads ...wall time : 140m
+409,98,2541,0,Yuanmi Chen and Phong Nguyen,Other,2010-06-9,1.00927,
+410,98,2579,0,Yuanmi Chen and Phong Nguyen,Other,2010-06-9,1.02430,
+411,98,2607,0,Yuanmi Chen and Phong Nguyen,Other,2010-05-14,1.03554,
+412,97,2304,7582,Jim Johnson,Sieving,2022-02-12,0.91949,Modified G6K Workout. Total CPU time (over all threads): 113.3501s.
+413,97,2334,4198,Jim Johnson,Sieving,2021-11-24,0.93144,Modified G6K Workout. Total CPU time (over all threads): 98.1663s.
+414,97,2346,1033,Jim Johnson,Sieving,2021-10-29,0.93985,Modified G6K Workout. Total CPU time (over all threads): 784.3853s.
+415,97,2375,510,Jim Johnson,Sieving,2021-10-9,0.94767,Modified G6K Workout. Total CPU time: 422.3748s
+416,97,2408,404,Jim Johnson,Sieving,2021-10-9,0.96398,Modified G6K Workout. Total CPU time: 544.7249s
+417,97,2410,243,Jim Johnson,Sieving,2021-10-4,0.96501,Modified G6K Workout. Total CPU time: 443.5099s.
+418,97,2418,164,Michael Burger,"ENUM,BKZ",2019-01-10,0.96802,"CPU-parallel pruned enumeration on a fplll-BKZ2.0-56 reduced basis. Running with 16T, processing 5 bases, Runtime 65sec."
+419,97,2481,906,"Satoshi Nakamura,Michiko Ooka,Junpei Yamaguchi,Masaya Yasuda",Other,2017-12-11,0.99172,DeepBKZ with full enumeration
+420,97,2506,906,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-28,1.00197,
+421,97,2546,0,Alex Li,BKZ,2014-07-2,1.01809,using Intel Xeon CPU (3.30GHz)
+422,96,2314,8012,Jim Johnson,Sieving,2021-11-16,0.93111,Modified G6K Workout. Total CPU time (over all threads): 132.8047s.
+423,96,2326,3376,Jim Johnson,Sieving,2021-11-8,0.93540,Modified G6K Workout. Total CPU time (over all threads): 199.3417s.
+424,96,2342,1677,Jim Johnson,Sieving,2021-10-29,0.93899,Modified G6K Workout. Total CPU time (over all threads): 117.3627s.
+425,96,2349,970,Jim Johnson,Sieving,2021-10-25,0.94353,Modified G6K Workout. Total CPU time (over all threads): 537.1373s.
+426,96,2369,860,Jim Johnson,Sieving,2021-10-23,0.94864,Modified G6K Workout. Total CPU time (over all threads): 72.7174s.
+427,96,2370,414,Jim Johnson,Sieving,2021-10-2,0.95059,Modified G6K Workout. Total CPU time: 153.5808s.
+428,96,2416,301,Jim Johnson,Sieving,2021-10-1,0.96792,Modified G6K Workout. Total CPU time:460.8374s.
+429,96,2425,145,Jim Johnson,Sieving,2021-09-30,0.97447,Modified G6K Workout. Total CPU time:125.8415s.
+430,96,2441,18,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-11-11,0.97599,preprocess DeepBKZ20 + pruned-parallel Enum with 120 processes; total runtime 419 seconds
+431,96,2484,14,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-11-11,0.99750,preprocess DeepBKZ20 + pruned-parallel Enum with 120 processes; total runtime 591 seconds
+432,96,2490,19,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-11-11,0.99760,preprocess DeepBKZ20 + pruned-parallel Enum with 120 processes; total runtime 369 seconds
+433,96,2496,7,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-11-11,1.00230,preprocess DeepBKZ20 + pruned-parallel Enum with 120 processes; total runtime 488.516s
+434,96,2504,3,"Nariaki Tateiwa, Akihiro Yoshida, Satoshi Nakamura, Shizuo Kaji, Masaya Yasuda, Katsuki Fujisawa","ENUM,BKZ",2019-11-11,1.00317,preprocess DeepBKZ20 + pruned-parallel Enum with 120 processes; total runtime 389.288s
+435,96,2506,21,Michael Burger,"ENUM,BKZ",2018-10-10,1.00916,"BKZ-50 reduction with extreme pruning within fplll library followed by OpenMP-parallelized, parametrized extreme pruned enumeration.<br /><br />Total runtime: 190 seconds with 32 Threads on dual socket Intel(R) Xeon(R) CPU E5-2698 machine."
+436,96,2520,122,Nikolaos Chatzis and Konstadinos A. Draziotis,"ENUM,BKZ",2018-04-14,1.01334,BKZ 2.0 + Randomizing Parallel Enumeration using 4 Threads ...wall time : 90m
+437,96,2522,0,"Tsukasa Ishiguro, Shinsaku Kiyomoto, Yutaka Miyake, Tsuyoshi Takagi",Sieving,2013-01-17,1.00851,
+438,96,2558,0,Urs Wagner,Other,2011-01-21,1.02293,\’Iterative\’ LLL
+439,96,2568,0,Yuanmi Chen and Phong Nguyen,Other,2010-06-8,1.02672,
+440,96,2571,0,Yuanmi Chen and Phong Nguyen,Other,2010-06-7,1.02780,
+441,96,2587,0,Yuanmi Chen and Phong Nguyen,Other,2010-06-7,1.03447,
+442,96,2609,0,Yuanmi Chen and Phong Nguyen,Other,2010-05-12,1.04318,
+443,95,2220,4056,Jim Johnson,Sieving,2022-02-12,0.89584,Modified G6K Workout. Total CPU time (over all threads): 22.6640s.
+444,95,2309,521,Jim Johnson,Sieving,2021-12-2,0.93291,Modified G6K Workout. Total CPU time (over all threads): 29.3246s.
+445,95,2310,248,Jim Johnson,Sieving,2021-09-29,0.93170,Modified G6K Workout. Total CPU time 54.7424s.
+446,95,2417,135,Michael Burger,"ENUM,BKZ",2019-01-9,0.97743,"CPU-parallel, pruned enumeration with fplll pre-processing. Running with 16 T. Processing 10 bases in 76.4 seconds."
+447,95,2424,122,Michael Burger,"ENUM,BKZ",2019-01-9,0.98082,CPU-parallel pruned enumeration with fplll pre-processing. Found after 52 bases in 413.78s with 16 T.
+448,95,2473,121,Nikolaos Chatzis and Konstadinos A. Draziotis,"ENUM,BKZ",2018-04-14,1.00083,BKZ 2.0 + Randomizing Parallel Enumeration using 4 Threads ...wall time : 30m
+449,95,2521,0,"Junpei Yamaguchi, Masaya Yasuda and Takuya Hayashi",Other,2017-06-23,1.01405,
+450,95,2523,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-11-18,1.01478,
+451,95,2542,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-11-18,1.02276,
+452,95,2552,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-11-18,1.02655,
+453,95,2566,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-11-18,1.03241,
+454,95,2574,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-11-18,1.03551,
+455,95,2584,0,Alex Li,"BKZ,Other",2014-06-8,1.03941,
+456,94,2276,4719,Jim Johnson,Sieving,2022-02-12,0.92475,Modified G6K Workout. Total CPU time (over all threads): 137.2516s.
+457,94,2283,678,Jim Johnson,Sieving,2021-10-28,0.92343,Modified G6K Workout. Total CPU time (over all threads): 25.9518s..
+458,94,2313,229,Jim Johnson,Sieving,2021-10-16,0.94081,Modified G6K Workout. Total CPU time (over all threads): 384.1221s..
+459,94,2342,147,Michael Burger,"ENUM,BKZ",2018-10-27,0.94770,"BKZ-56 reduction with extreme pruning within fplll library followed by OpenMP-parallelized, parametrized extreme pruned enumeration.<br /><br />Total runtime: 279 seconds with 24 Threads on dual socket Intel(R) Xeon(R) CPU E5-2698 machine."
+460,94,2446,800,Nikolaos Chatzis and Konstadinos A. Draziotis,"ENUM,BKZ",2018-04-16,0.99073,BKZ 2.0 + Randomizing Parallel Enumeration using 4 Threads...wall time : 60m
+461,94,2473,650,"Malin Haque, Dipta Das & Nafiul Hassan",Other,2017-02-23,0.99944,
+462,94,2526,0,Phong Nguyen,ENUM,2014-03-5,1.02066,
+463,94,2528,0,"Michael Schneider, ï¿½zgï¿½r Dagdelen, Jan Reichelt","BKZ,Other",2010-11-12,1.02145,
+464,94,2543,0,Yuanmi Chen and Phong Nguyen,Other,2010-06-8,1.02776,
+465,94,2565,0,Yuanmi Chen and Phong Nguyen,Other,2010-05-11,1.03656,
+466,93,2190,1139,Jim Johnson,Sieving,2021-11-14,0.89074,Modified G6K Workout. Total CPU time (over all threads): 14.6681s.
+467,93,2285,302,Jim Johnson,Sieving,2021-09-30,0.93091,Modified G6K Workout. Total CPU time:15.1198s.
+468,93,2382,283,Jim Johnson,Sieving,2021-09-30,0.96894,Modified G6K Workout. Total CPU time 148.5300s.
+469,93,2388,257,Michael Burger,"ENUM,BKZ",2018-10-10,0.97091,"BKZ-52 pruned from fplll lbirary combined with extreme pruned and parametrized, OpenMP-parallelized Enumeration. <br /><br />System: Dual Socket Intel E5-2680 v3 with 64 GB RAM.<br /><br />Problem solved in overall runtime of 233 seconds with 24 Threads."
+470,93,2396,133,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-27,0.97645,
+471,93,2548,0,Alex Li,"ENUM,BKZ",2015-03-16,1.03843,
+472,93,2559,0,"Fï¿½bio Correia, Artur Mariano and Alberto Proenï¿½a",ENUM,2014-05-17,1.04290,
+473,92,2266,1351,Jim Johnson,Sieving,2021-10-30,0.92823,Modified G6K Workout. Total CPU time (over all threads): 12.3920s.
+474,92,2276,904,Jim Johnson,Sieving,2021-10-17,0.93258,Modified G6K Workout. Total CPU time (over all threads): 86.6447s..
+475,92,2295,501,Jim Johnson,Sieving,2021-10-15,0.94242,Modified G6K Workout Total CPU time: 32.7339s..
+476,92,2308,148,Michael Burger,"ENUM,BKZ",2019-11-14,0.94703,Solved with:<br />https://github.com/MiBu84/p3enum/tree/EvolutionStrategy<br />in 198 sec with 24 threads.
+477,92,2327,60,Michael Burger,"ENUM,BKZ",2018-10-26,0.95185,"BKZ-56 reduction with extreme pruning within fplll library followed by OpenMP-parallelized, parametrized extreme pruned enumeration.<br /><br />Total runtime: 396.67 seconds with 24 Threads on dual socket Intel(R) Xeon(R) CPU E5-2698 machine."
+478,92,2440,0,Artur Mariano,Sieving,2014-11-28,0.99680,
+479,92,2454,0,"Michael Schneider, ï¿½zgï¿½r Dagdelen, Jan Reichelt","ENUM,Other",2010-12-17,1.00236,Running time: 36966 Enum calls: 162
+480,92,2492,0,Urs Wagner,Other,2010-08-19,1.01782,
+481,92,2498,0,Yuanmi Chen and Phong Nguyen,Other,2010-05-11,1.02058,
+482,91,2239,5621,Jim Johnson,Sieving,2021-11-1,0.92070,Modified G6K Workout. Total CPU time (over all threads): 30.3756s..
+483,91,2251,3924,Jim Johnson,Sieving,2021-10-31,0.92734,Modified G6K Workout. Total CPU time (over all threads): 26.2533s.
+484,91,2256,1303,Jim Johnson,Sieving,2021-10-23,0.92962,Modified G6K Workout. Total CPU time (over all threads): 61.4747s.
+485,91,2288,778,Jim Johnson,Sieving,2021-10-12,0.93830,Modified G6K Workout Total CPU time: 42.3245s.
+486,91,2294,733,Jim Johnson,Sieving,2021-10-3,0.94639,Modified G6K Workout. Total CPU time: 38.1081s.
+487,91,2315,161,Jim Johnson,Sieving,2021-09-25,0.95552,Modified G6K Workout. Total CPU time 87.3858s.
+488,91,2323,421,Michael Burger,"ENUM,BKZ",2019-01-10,0.95705,"CPU-parallel pruned enumeration on basis reduced with fplll-BKZ2.0-50. Running with 16T, 1 basis processed, runtime 24.58 seconds."
+489,91,2330,78,Michael Burger,"ENUM,BKZ",2018-10-26,0.95965,"BKZ-55 reduction with extreme pruning within fplll library followed by OpenMP-parallelized, parametrized extreme pruned enumeration.<br /><br />Total runtime: 520 seconds with 24 Threads on dual socket Intel(R) Xeon(R) CPU E5-2698 machine."
+490,91,2424,1203,"Malin Haque, Dipta Das & Nafiul Hassan",Other,2017-02-22,0.99622,
+491,91,2433,0,Alex Li,"ENUM,BKZ",2015-03-15,1.00467,
+492,91,2468,0,Dan Ding,"BKZ,Other",2013-03-5,1.01920,439638s
+493,90,2202,3568,Jim Johnson,Sieving,2021-11-2,0.90972,Modified G6K Workout. Total CPU time (over all threads): 13.8977s.
+494,90,2226,1705,Jim Johnson,Sieving,2021-09-25,0.92431,Modified G6K Workout. Total CPU time 70.6004s.
+495,90,2241,78,Michael Burger,"ENUM,BKZ",2018-11-29,0.92844,CPU-parallel pruned enumeration on 24 T in 50 sec.
+496,90,2325,11,Felix Fontein,"BKZ,Other",2012-11-15,0.95952,"BKZ with blocksize 30, reduction parameter 0.99 and Deep Insertions to the first 30 vectors. Found this vector after 6.1 minutes and 17623 enum calls (47% of them successful). The total reduction time was 1.58 hours and 626098 enum calls (43% of them successfull)."
+497,90,2358,9,"Michael Schneider, ï¿½zgï¿½r Dagdelen, Jan Reichelt","ENUM,Other",2010-12-14,0.97751,Running time: 17310<br />Enum calls: 7
+498,90,2419,0,Yuanmi Chen and Phong Nguyen,Other,2010-06-7,0.99866,
+499,90,2482,0,Yuanmi Chen and Phong Nguyen,Other,2010-05-11,1.02470,
+500,89,2209,6281,Jim Johnson,Sieving,2021-10-29,0.91649,Modified G6K Workout. Total CPU time (over all threads): 47.8821s.
+501,89,2220,5193,Jim Johnson,Sieving,2021-10-29,0.92400,Modified G6K Workout. Total CPU time (over all threads): 20.7449s..
+502,89,2231,994,Jim Johnson,Sieving,2021-10-16,0.92787,Modified G6K Workout. Total CPU time (over all threads): 68.0459s..
+503,89,2259,223,Michael Burger,"ENUM,BKZ",2018-10-26,0.93922,"BKZ-47 reduction with extreme pruning within fplll library followed by OpenMP-parallelized, parametrized extreme pruned enumeration.<br /><br />Total runtime: 100 seconds with 24 Threads on dual socket Intel(R) Xeon(R) CPU E5-2698 machine."
+504,89,2329,218,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-27,0.97230,
+505,89,2459,0,Alex Li,"BKZ,Other",2014-12-3,1.02610,41940s
+506,89,2468,7,"Yuntao Wang, Tsuyoshi Takagi",BKZ,2014-07-1,1.02604,
+507,89,2475,0,Kenji Kashiwabara and Masaharu Fukase,Other,2014-04-15,1.03281,
+508,89,2532,1512,P.G. Demidov Yaroslavl State University team,Other,2013-04-18,1.04958,
+509,88,2192,184,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-26,0.91666,
+510,88,2404,6,Michael Schneider,BKZ,2010-10-27,1.00410,sage BKZ 2-41
+511,87,2114,9651,Jim Johnson,Sieving,2022-02-12,0.89134,Modified G6K Workout. Total CPU time (over all threads): 36.9259s.
+512,87,2157,2488,Jim Johnson,Sieving,2021-10-15,0.90722,Modified G6K Workout Total CPU time: 22.8158s..
+513,87,2218,629,Jim Johnson,Sieving,2021-10-1,0.93659,Modified G6K Workout. Total CPU time: 16.5335s.
+514,87,2231,606,Jim Johnson,Sieving,2021-10-1,0.94128,Modified G6K Workout. Total CPU time: 40.1398s.
+515,87,2244,295,Jim Johnson,Sieving,2021-10-1,0.94698,Modified G6K Workout. Total CPU time: 28.9653s.
+516,87,2252,15,Jim Johnson,Sieving,2021-09-26,0.95043,Modified G6K Workout. Total CPU time: 21.8385s.
+517,87,2328,6,Jim Johnson,Sieving,2021-09-26,0.97569,Modified G6K Workout. Total CPU time: 78.5710s.
+518,87,2342,4,Michael Burger,"ENUM,BKZ",2018-10-11,0.98885,"BKZ-49 reduction with extreme pruning within fplll library followed by OpenMP-parallelized, parametrized extreme pruned enumeration.<br /><br />Total runtime: 244 seconds with 8 Threads on AMD Ryzen 2700 machine."
+519,87,2362,0,Alex Li,"BKZ,Other",2014-12-3,0.99025,41940s
+520,87,2408,1112,Malin Haque,BKZ,2013-05-6,1.01150,"~10980s, block-35"
+521,87,2497,0,Dan Ding,"BKZ,Other",2013-03-4,1.04664,335022s
+522,86,2174,8971,Jim Johnson,Sieving,2021-10-25,0.91779,Modified G6K Workout. Total CPU time (over all threads): 24.3433s.
+523,86,2178,5233,Jim Johnson,Sieving,2021-10-18,0.92315,Modified G6K Workout. Total CPU time (over all threads): 14.6247s.
+524,86,2185,2966,Jim Johnson,Sieving,2021-10-15,0.92765,Modified G6K Workout Total CPU time: 14.7595s.
+525,86,2201,2825,Jim Johnson,Sieving,2021-10-15,0.93344,Modified G6K Workout Total CPU time: 80.3113s.
+526,86,2206,1755,Jim Johnson,Sieving,2021-10-7,0.93499,Modified G6K Workout. Total CPU time: 8.7645s.
+527,86,2232,446,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-10-31,0.94111,preprocess BKZ20 + pruned-parallel Enum
+528,86,2276,279,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-10-31,0.96537,preprocess BKZ20 + pruned-parallel Enum
+529,86,2284,456,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-10-31,0.96386,preprocess BKZ20 + pruned-parallel Enum
+530,86,2285,249,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-10-31,0.96374,preprocess BKZ20 + pruned-parallel Enum
+531,86,2291,308,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-10-31,0.97127,preprocess BKZ20 + pruned-parallel Enum
+532,86,2297,203,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-10-12,0.97380,preprocess BKZ + pruned-parallel Enum
+533,86,2299,9,Michael Burger,"ENUM,BKZ",2018-10-11,0.97635,"BKZ-42 reduction with extreme pruning within fplll library followed by OpenMP-parallelized, parametrized extreme pruned enumeration.<br /><br />Total runtime: ~100 seconds with 8 Threads on AMD Ryzen 1700."
+534,86,2357,0,Artur Mariano,Sieving,2014-11-7,0.99394,
+535,86,2387,0,Dan Ding,"BKZ,Other",2013-03-4,1.00677,56475.1s
+536,86,2456,0,Moon Sung Lee,BKZ,2010-10-25,1.03605,NTL BKZ-40
+537,85,2127,785,Jim Johnson,Sieving,2021-10-27,0.90815,Modified G6K Workout. Total CPU time (over all threads): 34.6488s.
+538,85,2161,204,Michael Burger,"ENUM,BKZ",2018-11-29,0.91809,CPU-Parallel pruned enumeration with 24T in ~90 sec.
+539,85,2311,0,Alex Li,"ENUM,BKZ",2015-03-2,0.98285,
+540,85,2347,64,Artur Mariano and Christian Bischof,Sieving,2014-03-28,0.99965,
+541,85,2355,0,Kenji Kashiwabara and Masaharu Fukase,Other,2014-03-25,1.00139,
+542,85,2412,0,Dan Ding,"BKZ,Other",2013-02-28,1.02567,27817.7s
+543,85,2463,8,"Michael Schneider, Norman Gï¿½ttert",Other,2011-06-9,1.04634,Random Sampling on GPU
+544,84,2158,1175,Jim Johnson,Sieving,2021-10-13,0.92217,Modified G6K Workout Total CPU time:7.9779s.
+545,84,2173,826,Jim Johnson,Sieving,2021-10-2,0.92643,Modified G6K Workout. Total CPU time: 18.9788s.
+546,84,2202,673,Michael Burger,"ENUM,BKZ",2018-11-29,0.94163,CPU-parallel pruned Enumeration with 24 threads in 60sec.
+547,84,2255,311,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-25,0.96082,
+548,84,2288,9,Michael Schneider,BKZ,2010-10-4,0.97762,sage BKZ 2-39
+549,83,2100,6036,Jim Johnson,Sieving,2021-10-4,0.90497,Modified G6K Workout. Total CPU time: 18.6852s.
+550,83,2169,899,Jim Johnson,Sieving,2021-09-29,0.93502,Modified G6K. Total CPU time 15.7656s.
+551,83,2209,316,Jim Johnson,Sieving,2021-09-27,0.95172,Modified G6K Workout. Total CPU time: 22.2551s.
+552,83,2222,237,Michael Burger,"ENUM,BKZ",2018-11-29,0.95941,"Parallel CPU pruned enumeration + fplll. 24 Threads, in 20 s"
+553,83,2304,64,Artur Mariano und Christian Bischof,Sieving,2014-03-21,0.99466,
+554,83,2384,5123,Malin Haque,BKZ,2013-05-4,1.02578,"aborted BKZ-30, ~21600s for 5 runs"
+555,83,2405,5121,Malin Haque,BKZ,2013-05-4,1.03077,"aborted BKZ-30, ~21600s"
+556,83,2433,0,Dan Ding,"BKZ,Other",2013-02-27,1.04267,40907.8s
+557,82,2043,8449,Jim Johnson,Sieving,2021-10-17,0.88534,Modified G6K Workout. Total CPU time (over all threads): 3.8146s..
+558,82,2107,6917,Jim Johnson,Sieving,2021-10-16,0.91540,Modified G6K Workout. Total CPU time (over all threads): 11.2590s..
+559,82,2117,5850,Jim Johnson,Sieving,2021-10-15,0.91718,Modified G6K Workout Total CPU time: 9.4211s.
+560,82,2130,5001,Jim Johnson,Sieving,2021-10-15,0.92168,Modified G6K Workout Total CPU time: 27.1332s.
+561,82,2131,2896,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-10-12,0.92380,preprocess BKZ + pruned-parallel Enum
+562,82,2133,155,Michael Burger,"ENUM,BKZ",2018-11-29,0.92282,CPU-parallel pruned enumeration with 12T in 11sec.
+563,82,2231,93,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-24,0.96919,
+564,82,2303,0,Moon Sung Lee,Sieving,2010-10-22,0.99566,Runtime : 611h
+565,81,2073,9152,Jim Johnson,Sieving,2021-10-17,0.90340,Modified G6K Workout. Total CPU time (over all threads): 7.1916s.
+566,81,2090,7137,Jim Johnson,Sieving,2021-10-15,0.91167,Modified G6K Workout Total CPU time: 5.0411s.
+567,81,2103,6473,Jim Johnson,Sieving,2021-10-14,0.91846,Modified G6K Workout Total CPU time: 9.2247s.
+568,81,2112,4174,Jim Johnson,Sieving,2021-10-6,0.92158,Modified G6K Workout. Total CPU time: 10.5123s.
+569,81,2133,3273,Jim Johnson,Sieving,2021-10-6,0.92581,Modified G6K Workout. Total CPU time: 14.1697s.
+570,81,2134,299,Michael Burger,"ENUM,BKZ",2018-11-29,0.92813,CPU-parallel pruned enumeration with 12T in 9sec.
+571,81,2276,0,Dan Ding,"BKZ,Other",2013-02-27,0.99192,A Genetic Algorithm using 66926.3s
+572,81,2325,71,Usatyuk Vasiliy,BKZ,2012-08-31,1.01532,block 41
+573,80,2040,7951,Jim Johnson,Sieving,2021-10-16,0.89186,Modified G6K Workout. Total CPU time (over all threads): 7.3713s..
+574,80,2077,7856,Jim Johnson,Sieving,2021-10-16,0.90673,Modified G6K Workout. Total CPU time (over all threads): 3.0053s..
+575,80,2085,5904,Jim Johnson,Sieving,2021-10-15,0.91064,Modified G6K Workout Total CPU time: 16.1406s.
+576,80,2088,3865,Jim Johnson,Sieving,2021-10-13,0.91785,Modified G6K Workout Total CPU time:9.0195s.
+577,80,2105,1728,Jim Johnson,Sieving,2021-10-9,0.91954,Modified G6K Workout. Total CPU time: 19.3889s.
+578,80,2111,1472,Jim Johnson,Sieving,2021-10-4,0.92317,Modified G6K Workout. Total CPU time: 11.0994s.
+579,80,2117,720,Michael Burger,"ENUM,BKZ",2018-11-29,0.92625,CPU-parallel pruned enumeration with 12T in 10sec
+580,80,2163,426,Dipta Das & Nafiul Hassan,Other,2017-01-27,0.94517,
+581,80,2202,8,Felix Fontein,"BKZ,Other",2012-08-7,0.96102,"BKZ with blocksize 20 and alpha = 0.99 with Deep Insertions (to the 30 first positions). No pre-reduction. The total running time was 4.8 minutes, 48347 enumerations were done, 16066 of them successful. The shortest vector was found after 2.2 minutes and 3279 enumerations."
+582,80,2217,1,"Michael Schneider, ï¿½zgï¿½r Dagdelen, Jan Reichelt","ENUM,Other",2010-11-26,0.96922,Time: 27587 Enumcalls: 6
+583,80,2272,0,Benjamin Milde,Sieving,2010-05-11,0.99554,gsieve-parallel-alpha
+584,79,1966,6348,Jim Johnson,Sieving,2021-10-26,0.86817,Modified G6K Workout. Total CPU time (over all threads): 1.5051s.
+585,79,2051,4211,Jim Johnson,Sieving,2021-10-18,0.90191,Modified G6K Workout. Total CPU time (over all threads): 3.4756s.
+586,79,2055,4154,Jim Johnson,Sieving,2021-10-18,0.90879,Modified G6K Workout. Total CPU time (over all threads): 11.6932s.
+587,79,2058,2707,Jim Johnson,Sieving,2021-10-14,0.90521,Modified G6K Workout Total CPU time: 4.7657s.
+588,79,2077,1639,Jim Johnson,Sieving,2021-10-13,0.91835,Modified G6K Workout Total CPU time: 9.6490s.
+589,79,2080,1013,Jim Johnson,Sieving,2021-10-13,0.91531,Modified G6K Workout Total CPU time: 4.9315s.
+590,79,2087,189,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-23,0.91591,
+591,79,2240,16,Walter White,Other,2013-09-24,0.98232,
+592,79,2346,0,Dan Ding,"BKZ,Other",2013-02-22,1.03440,34682.8s
+593,78,2030,8978,Jim Johnson,Sieving,2021-10-18,0.89653,Modified G6K Workout. Total CPU time (over all threads): 6.7426s.
+594,78,2032,8916,Jim Johnson,Sieving,2021-10-17,0.90435,Modified G6K Workout. Total CPU time (over all threads): 5.4674s.
+595,78,2050,84,Jim Johnson,Sieving,2021-09-26,0.90419,Modified G6K Workout. Total CPU time: 14.7708s.
+596,78,2143,42,Walter White,Other,2013-09-24,0.95306,
+597,78,2272,9,"Michael Schneider, ï¿½zgï¿½r Dagdelen, Jan Reichelt","ENUM,Other",2010-11-26,1.01051,Running time: 889 sec. Enum-Calls: 6
+598,78,2273,0,Moon Sung Lee,Sieving,2010-10-22,1.00434,Runtime : 176h
+599,78,2336,0,Antonio Campello and Joï¿½o Strapasson,"BKZ,Other",2010-10-18,1.03216,
+600,77,1988,6871,Jim Johnson,Sieving,2021-10-26,0.88535,Modified G6K Workout. Total CPU time (over all threads): 4.7764s.
+601,77,2005,2955,Jim Johnson,Sieving,2021-10-13,0.89454,Modified G6K Workout Total CPU time: 2.1533s.
+602,77,2030,584,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-21,0.90805,
+603,77,2229,0,Zhongxiang Zheng,BKZ,2016-06-21,0.99760,"Using a new BKZ method, it takes about 2 hours with a single core."
+604,77,2235,100,Walter White,Other,2013-09-24,0.99238,
+605,77,2271,190,Malin Haque,BKZ,2013-05-4,1.00905,"~43200s, core i3 2.67 GHz, aborted-BKZ, block 36"
+606,76,1902,4782,Jim Johnson,Sieving,2021-10-7,0.84992,Modified G6K Workout. Total CPU time: 0.5813s.
+607,76,2041,866,Jim Johnson,Sieving,2021-10-1,0.91219,Modified G6K Workout. Total CPU time 6.5519s
+608,76,2044,813,Jim Johnson,Sieving,2021-09-27,0.92081,Modified G6K Workout. Total CPU time: 3.8685s.
+609,76,2081,531,Jim Johnson,Sieving,2021-09-27,0.93761,Modified G6K Workout. Total CPU time: 4.0512s.
+610,76,2090,436,Jim Johnson,Sieving,2021-09-26,0.93978,Modified G6K Workout. Total CPU time: 3.6596s.
+611,76,2125,309,Jim Johnson,Sieving,2021-09-26,0.95462,Modified G6K Workout. Total CPU time: 9.7706s.
+612,76,2133,164,Michael Burger,"ENUM,BKZ",2018-10-16,0.95418,"BKZ-42 reduction with extreme pruning within fplll library followed by OpenMP-parallelized, parametrized extreme pruned enumeration.<br /><br />Total runtime: seconds with 8 Threads on dual socket Intel(R) Xeon(R) CPU E5-2698 machine."
+613,76,2147,57,Walter White,Other,2013-09-24,0.96098,
+614,76,2241,0,Moon Sung Lee,Sieving,2010-10-22,1.00060,Runtime : 91h
+615,76,2252,1,Michael Schneider,BKZ,2010-09-13,1.01078,BKZ 2-31 in sage
+616,75,1953,3660,Jim Johnson,Sieving,2021-10-9,0.88561,Modified G6K Workout. Total CPU time: 1.7668s
+617,75,1999,2840,Jim Johnson,Sieving,2021-10-2,0.90589,Modified G6K Workout. Total CPU time: 3.1660s.
+618,75,2021,1822,Jim Johnson,Sieving,2021-10-2,0.91374,Modified G6K Workout. Total CPU time: 3.0624s.
+619,75,2022,1237,Jim Johnson,Sieving,2021-09-30,0.91626,Modified G6K Workout. Total CPU time: 1.8049s.
+620,75,2040,1206,Jim Johnson,Sieving,2021-09-30,0.92292,Modified G6K. Total CPU time: 3.1582s.
+621,75,2052,776,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-21,0.92309,
+622,75,2140,38,Walter White,Other,2013-09-24,0.96545,
+623,75,2220,1000,Malin Haque,BKZ,2013-05-3,1.00305,
+624,75,2255,6,Jan Reichelt,Other,2011-05-30,1.01754,BKZ-Prereduction-Ant Colony Optimization using Probabilistic Beam Search
+625,75,2280,0,"Michael Schneider, Norman Gï¿½ttert",Other,2011-05-26,1.03217,Random Sampling on GPU
+626,74,1925,8100,Jim Johnson,Sieving,2021-10-26,0.87072,Modified G6K Workout. Total CPU time (over all threads): 0.7967s.
+627,74,1938,6608,Jim Johnson,Sieving,2021-10-26,0.88139,Modified G6K Workout. Total CPU time (over all threads): 1.7503s.
+628,74,1945,5466,Jim Johnson,Sieving,2021-09-28,0.88224,Modified G6K. Total CPU time 1.5209s.
+629,74,1966,4190,Jim Johnson,Sieving,2021-09-28,0.89385,Modified G6K. Total CPU time 1.6864s.
+630,74,1993,1575,Jim Johnson,Sieving,2021-09-28,0.90711,Modified G6K. Total CPU time 4.2248s.
+631,74,2033,503,Jim Johnson,Sieving,2021-09-27,0.92480,Modified G6K Workout. Total CPU time: 0.6064s.
+632,74,2057,240,Jim Johnson,Sieving,2021-09-27,0.93189,Modified G6K Workout. Total CPU time: 15.0225s.
+633,74,2058,144,Jim Johnson,Sieving,2021-09-26,0.93771,Modified G6K Workout. Total CPU time: 2.0147s.
+634,74,2096,69,Michael Burger,"ENUM,BKZ",2018-10-17,0.95587,"BKZ-44 reduction with extreme pruning within fplll library followed by OpenMP-parallelized, parametrized extreme pruned enumeration.<br /><br />Total runtime: 16 seconds with 16 Threads on dual socket Intel(R) Xeon(R) CPU E5-2698 machine."
+635,74,2137,32,Walter White,Other,2013-09-24,0.97190,
+636,74,2216,777,Usatyuk Vasiliy,BKZ,2012-08-24,1.00265,"30 block size, 329 s"
+637,74,2246,127,Usatyuk Vasiliy,BKZ,2012-08-24,1.01953,"650 s, block size 29"
+638,74,2254,0,Benjamin Milde,Sieving,2010-05-11,1.02546,gsieve-parallel-alpha
+639,73,1968,179,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-20,0.89729,
+640,73,2044,74,Walter White,Other,2013-09-24,0.93025,
+641,73,2190,0,Dan Ding,"BKZ,Other",2013-02-21,1.00332,60614.9s
+642,73,2220,0,Dan Ding,"BKZ,Other",2013-02-21,1.01727,38747.3s
+643,73,2235,0,Dan Ding,"BKZ,Other",2013-02-20,1.02427,8172.8s
+644,73,2254,0,Dan Ding,"BKZ,Other",2013-02-20,1.03260,1828.19s using genectic algorithms with a preprocessing of a bkz blocksize=3
+645,72,1871,7260,Jim Johnson,Sieving,2021-10-7,0.86492,Modified G6K Workout. Total CPU time: 1.5903s.
+646,72,1958,6214,Jim Johnson,Sieving,2021-10-6,0.89906,Modified G6K Workout. Total CPU time: 1.0650s.
+647,72,1962,5555,Jim Johnson,Sieving,2021-10-1,0.89944,Modified G6K Workout. Total CPU time 4.4982s.
+648,72,1972,5499,Jim Johnson,Sieving,2021-10-1,0.90960,Modified G6K Workout. Total CPU time:2.3606s.
+649,72,1973,5076,Jim Johnson,Sieving,2021-09-27,0.90866,Modified G6K Workout. Total CPU time: 1.4733s.
+650,72,2022,4058,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-09-13,0.93483,parallel Enum
+651,72,2033,1077,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-09-13,0.93631,parallel Enum
+652,72,2048,4056,"N. Tateiwa, Y. Shinano, A. Yoshida, S. Nakamura, S. Kaji, M. Yasuda, K. Fujisawa","ENUM,BKZ",2019-09-13,0.93940,parallel Enum
+653,72,2049,16,"Dan Ding, Guizhen Zhu and Xiaoyun Wang","BKZ,Other",2014-02-8,0.94219,"A Genetic Algorithm with a preprocessing of BKZ, using 5481.16s on a IBM Blade Server"
+654,72,2077,98,Walter White,Other,2013-09-24,0.95702,
+655,72,2179,0,Moon Sung Lee,Sieving,2010-10-22,1.00417,Runtime : 1352m
+656,72,2234,0,Michael Schneider,BKZ,2010-09-13,1.02931,BKZ 2-29 in sage
+657,71,1890,885,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-11-4,0.87536,
+658,71,2033,31,Walter White,Other,2013-09-24,0.93922,
+659,71,2195,1000,Malin Haque,BKZ,2013-05-3,1.01974,
+660,71,2215,53,Usatyuk Vasiliy,BKZ,2012-08-30,1.02110,"block 29, 23 s"
+661,71,2252,1,Michael Schneider,Other,2011-05-26,1.04648,Random Sampling on GPU
+662,70,1869,4592,Jim Johnson,Sieving,2021-10-10,0.87228,Modified G6K Workout Total CPU time: 1.9014s.
+663,70,1903,1815,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-23,0.88626,
+664,70,1986,17,Felix Fontein,Other,2012-07-3,0.92427,"LLL (alpha = 0.99) with Deep Insertions (blocksize 20),<br />pre-reduction with LLL (alpha = 0.75),<br />running time was 1.5 h (without pre-reduction)"
+665,70,2143,0,Benjamin Milde,Sieving,2010-05-11,0.99846,gsieve-parallel-alpha
+666,69,1896,2675,"Malin Haque, Dipta Das & Nafiul Hassan",BKZ,2016-10-31,0.88725,
+667,69,1972,555,"Malin Haque, Dipta Das & Nafiul Hassan",BKZ,2016-10-31,0.92397,
+668,69,2005,63,Walter White,Other,2013-09-24,0.94184,
+669,69,2212,0,Dan Ding,"BKZ,Other",2013-02-20,1.03643,4317.45s totally
+670,69,2226,0,Dan Ding,"BKZ,Other",2013-02-20,1.04258,1294s
+671,68,1896,7542,Jim Johnson,Sieving,2021-09-28,0.89260,Modified G6K. Total CPU time 2.3658s.
+672,68,1921,1861,Jim Johnson,Sieving,2021-09-27,0.90743,Modified G6K. Total CPU time: 1.9401s.
+673,68,1927,539,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-18,0.90977,
+674,68,1964,16,Walter White,Other,2013-09-24,0.92681,
+675,68,2038,3545421,Usatyuk Vasiliy,BKZ,2012-08-24,0.96813,
+676,68,2141,0,Moon Sung Lee,Sieving,2010-10-22,1.01033,Runtime : 362m
+677,67,1838,63098,Qianxue Cao,Sieving,2024-02-25,0.87545,modified g6k workout + random seed
+678,67,1889,8165,Jim Johnson,Sieving,2021-09-28,0.89846,Modified G6K. Total CPU time 0.8708s.
+679,67,1895,72,Walter White,Other,2013-09-24,0.90154,
+680,67,2158,100,Malin Haque,BKZ,2013-05-3,1.03035,
+681,67,2177,100,Malin Haque,BKZ,2013-05-3,1.03909,
+682,67,2187,0,Dan Ding,"BKZ,Other",2013-02-20,1.03965,Generated using a genetic algprothm with a pre-reduction bkz block=3 on an IBM blade. Totally 2187s.
+683,66,1846,95480,Qianxue Cao,Sieving,2024-03-5,0.88665,modified workout + random seed
+684,66,1857,6301,Jim Johnson,Sieving,2021-09-27,0.89299,Modified G6K Workout. Total CPU time: 0.6421s.
+685,66,1885,5822,Jim Johnson,Sieving,2021-09-27,0.90750,Modified G6K Workout. Total CPU time: 0.5822s.
+686,66,1893,241,Jim Johnson,Sieving,2021-09-25,0.90418,Modified G6K Workout. Total CPU time: 0.7065s.
+687,66,1960,93,Jim Johnson,Sieving,2021-09-25,0.93533,Modified G6K Workout. Total CPU time: 0.4199s.
+688,66,1971,3,"Dan Ding, Guizhen Zhu, Xiaoyun Wang","BKZ,Other",2014-02-8,0.94674,"A Genetic Algorithm with a Preprocessing of BKZ, using 1473.15s on a 16-Core IBM Blade Server"
+689,66,2000,15,Walter White,Other,2013-09-24,0.96380,
+690,66,2036,3,Dan Ding,"BKZ,Other",2013-02-18,0.97783,Using a genetic algorithm with a pre-reduction LLL on a IBM blade. Approximately 1 hour
+691,66,2072,4,Moon Sung Lee,Sieving,2010-10-25,0.99649,
+692,66,2099,3,Michael Schneider,BKZ,2010-09-13,1.00846,BKZ 2-24 in sage
+693,66,2120,2,Michael Schneider,BKZ,2010-09-13,1.01749,BKZ 2-14 in sage
+694,65,1841,6242,Jim Johnson,Sieving,2021-09-29,0.88543,Modified G6K. Total CPU time 1.2715s.
+695,65,1852,1471,Jim Johnson,Sieving,2021-09-26,0.89244,Modified G6K Workout. Total CPU time: 1.0740s.
+696,65,1890,1264,Jim Johnson,Sieving,2021-09-26,0.91767,Modified G6K Workout. Total CPU time: 0.3922s.
+697,65,1905,995,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-16,0.92387,
+698,65,1947,83,Walter White,Other,2013-09-24,0.94061,
+699,65,2077,1427,P.G. Demidov Yaroslavl State University team,Other,2013-04-16,1.00646,
+700,64,1797,8154,Jim Johnson,Sieving,2021-09-29,0.87125,Modified G6K Workout. Total CPU time 0.2089s.
+701,64,1810,4209,Jim Johnson,Sieving,2021-09-27,0.88568,Modified G6K. Total CPU time 0.3648s.
+702,64,1842,4020,Jim Johnson,Sieving,2021-09-26,0.89393,Modified G6K Workout. Total CPU time: 0.4426s.
+703,64,1880,2793,"Malin Haque, Dipta Das & Nafiul Hassan",BKZ,2016-10-30,0.91922,
+704,64,1886,40,Walter White,Other,2013-09-24,0.91690,
+705,64,1938,5,Jan Reichelt,Other,2011-06-29,0.94010,LLL-Prereduction. Ant Colony Optimiziation using Probabilistic Beam search.
+706,64,2103,0,Moon Sung Lee,Sieving,2010-10-22,1.02505,Method : Gauss sieve Runtime : 80m
+707,63,1738,1483,Jim Johnson,Sieving,2021-09-27,0.85489,Modified G6K Workout. Total CPU time: 0.2284s.
+708,63,1849,1119,Jim Johnson,Sieving,2021-09-26,0.90251,Modified G6K Workout. Total CPU time: 0.4037s.
+709,63,1850,284,Jim Johnson,Sieving,2021-09-26,0.91014,Modified G6K Workout. Total CPU time: 0.8401s.
+710,63,1878,77,Walter White,Other,2013-09-24,0.92154,
+711,63,2048,100,Malin Haque,BKZ,2013-05-3,1.00945,
+712,63,2106,15,Jan Reichelt,Other,2011-05-29,1.02815,LLL-Prereduction-Ant Colony Optimization using Probabilistic Beam Search
+713,62,1738,8366,Jim Johnson,Sieving,2021-10-1,0.85383,Modified G6K Workout. Total CPU time 0.1481s.
+714,62,1766,2289,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-11-22,0.86846,
+715,62,1818,776,"Dan Ding, Guizhen Zhu and Xiaoyun Wang","BKZ,Other",2014-02-8,0.90283,"A Genetic Algorithm with a Preprocessing of BKZ, using 834.09s on a IBM Blade"
+716,62,1887,26,Walter White,Other,2013-09-24,0.93271,
+717,62,2048,137,Usatyuk Vasiliy,BKZ,2012-08-24,1.00892,
+718,62,2092,0,Moon Sung Lee,Sieving,2010-10-22,1.03335,Method : Gauss sieve Runtime : 35m
+719,62,2118,0,"Antonio Campello, Joï¿½o Strapasson and Cristiano Torezzan","BKZ,Other",2010-10-15,1.04610,"There are also small vectors of norms 2153 2176, 2186 and 2238 below Gaussian Heuristic estimation"
+720,61,1670,8436,Jim Johnson,Sieving,2021-10-2,0.83578,Modified G6K Workout. Total CPU time: 0.0234s.
+721,61,1726,557,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-13,0.85889,
+722,61,1869,95,Walter White,Other,2013-09-24,0.93396,
+723,61,2112,0,Malin Haque,BKZ,2013-04-24,1.04626,
+724,60,1743,2677,Jim Johnson,Sieving,2021-09-27,0.87936,Modified G6K. Total CPU time 0.3422s.
+725,60,1752,526,"Dan Ding, Guizhen Zhu and Xiaoyun Wang","BKZ,Other",2014-02-8,0.87565,"A Genetic Algorithm with a Preprocessing of BKZ, using 589.873s on a IBM Blade"
+726,60,1776,45,Felix Fontein,BKZ,2012-08-5,0.88997,"standard Schnorr-Euchner BKZ with blocksize 20 and alpha = 0.99, needed 7.31 seconds"
+727,60,1917,15,Felix Fontein,"BKZ,Other",2012-07-3,0.96174,"BKZ (alpha = 0.99, blocksize 20) with Deep Insertions (to the first 10 positions),<br />pre-reduction with LLL (alpha = 0.75),<br />running time was 4.7 minutes (without pre-reduction)"
+728,60,1943,0,Moon Sung Lee,Sieving,2010-10-22,0.97131,
+729,60,1991,0,Michael Schneider,BKZ,2010-09-9,0.99488,BKZ 2-25
+730,59,1676,8157,Jim Johnson,Sieving,2021-09-27,0.84737,Modified G6K Workout. Total CPU time: 0.2110s.
+731,59,1761,7082,Jim Johnson,Sieving,2021-09-26,0.88605,Modified G6K Workout. Total CPU time: 0.0718s.
+732,59,1779,3172,Jim Johnson,Sieving,2021-09-26,0.89940,Modified G6K Workout. Total CPU time: 0.1554s.
+733,59,1788,2360,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-11-20,0.90630,
+734,59,1801,2335,"Malin Haque, Dipta Das & Nafiul Hassan",BKZ,2016-10-30,0.91220,
+735,59,1817,1650,"Malin Haque, Dipta Das & Nafiul Hassan",BKZ,2016-10-30,0.92045,
+736,59,1838,853,Malin Haque and Iftekharul Islam,"ENUM,BKZ",2015-10-10,0.92660,
+737,59,1848,6,Walter White,Other,2013-09-24,0.93240,
+738,59,2069,0,Malin Haque,BKZ,2013-04-24,1.04190,
+739,58,1724,74335,Qianxue Cao,Sieving,2024-02-7,0.87906,g6k workout(modified) + random seed
+740,58,1730,1167,Jim Johnson,Sieving,2021-09-26,0.88353,Modified G6K Workout. Total CPU time: 0.0259s.
+741,58,1743,2245,Jim Johnson,Sieving,2021-09-26,0.88423,Modified G6K Workout. Total CPU time: 0.1534s.
+742,58,1745,1772,Jim Johnson,Sieving,2021-09-26,0.89268,Modified G6K Workout. Total CPU time: 0.0969s.
+743,58,1747,1436,Jim Johnson,Sieving,2021-09-26,0.89504,Modified G6K Workout. Total CPU time: 0.8950s.
+744,58,1748,898,"Dan Ding, Guizhen Zhu and Xiaoyun Wang","BKZ,Other",2014-02-8,0.88683,"A Genetic Algorithm with a Preprocessing of BKZ, using 603.416s on a IBM Blade"
+745,58,1787,89,Walter White,,2013-09-24,0.91212,
+746,58,2009,9999,Usatyuk VAsiliy,BKZ,2012-08-24,1.02072,"5 second BKZ-25 KFP delta 0.9999999999999999 multipresion Phenom X4 965/ 8 Gb DDR2 800, ОС Microsoft Windows 7 x64 SP1"
+747,58,2017,0,Moon Sung Lee,Sieving,2010-10-22,1.02688,
+748,57,1639,9633,Jim Johnson,Sieving,2021-10-2,0.83966,Modified G6K Workout. Total CPU time:0.0702s.
+749,57,1643,3257,Jim Johnson,Sieving,2021-09-26,0.84202,Modified G6K Workout. Total CPU time: 0.1750s.
+750,57,1698,2917,Jim Johnson,Sieving,2021-09-26,0.87102,Modified G6K Workout. Total CPU time: 0.0531s.
+751,57,1703,3207,Jim Johnson,Sieving,2021-09-26,0.87288,Modified G6K Workout. Total CPU time: 0.0626s.
+752,57,1725,2730,Jim Johnson,Sieving,2021-09-26,0.88295,Modified G6K Workout. Total CPU time: 0.0637s.
+753,57,1730,1602,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-11-20,0.89155,
+754,57,1763,433,Malin Haque and Iftekharul Islam,"ENUM,BKZ",2015-10-9,0.91080,
+755,57,1772,42,Walter White,Other,2013-09-24,0.91384,
+756,57,1953,0,Malin Haque,BKZ,2013-04-24,1.00684,
+757,56,1488,9939,Jim Johnson,Sieving,2021-09-26,0.76768,Modified G6K Workout. Total CPU time: 0.0565s.
+758,56,1704,2908,Jim Johnson,Sieving,2021-09-26,0.88328,Modified G6K Workout. Total CPU time: 0.0321s.
+759,56,1711,539,"Dan Ding, Guizhen Zhu and Xiaoyun Wang","BKZ,Other",2014-02-8,0.88941,"A Genetic Algorithm with a Preprocessing of BKZ, using 466.217s on a IBM Blade"
+760,56,1751,20,Walter White,Other,2013-09-24,0.90302,
+761,56,1776,2,Jan Reichelt,Other,2011-05-23,0.91977,LLL-Prereduction - Ant Colony Optimization using Probabilistic Beam Search
+762,56,1894,1,"Michael Schneider, ï¿½zgï¿½r Dagdelen, Jan Reichelt","BKZ,Other",2010-11-23,0.97638,"Running time: 84 seconds, calls: 7"
+763,56,1974,0,Moon Sung Lee,Sieving,2010-10-22,1.02255,Intel Q9550 2.83GHz
+764,55,1633,8442,Jim Johnson,Sieving,2021-09-27,0.85757,Modified G6K. Total CPU time: 0.0447s.
+765,55,1643,1324,Jim Johnson,Sieving,2021-09-26,0.85450,Modified G6K Workout. Total CPU time: 0.1913s.
+766,55,1682,291,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-12,0.87944,
+767,55,1818,49,Walter White,Other,2013-09-24,0.95446,
+768,55,1870,14,Malin Haque,"ENUM,BKZ",2013-04-29,0.97415,
+769,55,1914,13,Malin Haque,"BKZ,Other",2013-04-29,0.99562,
+770,55,1918,13,Malin Haque,"ENUM,BKZ",2013-04-28,0.99780,
+771,55,1965,10,Malin Haque,"ENUM,BKZ",2013-04-27,1.02136,
+772,55,1973,0,Malin Haque,"BKZ,Other",2013-04-24,1.03197,
+773,54,1564,2439,Jim Johnson,Sieving,2021-09-25,0.82335,Modified G6K Workout. Total CPU time: 0.0230s.
+774,54,1696,988,"Dan Ding, Guizhen Zhu and Xiaoyun Wang (Tsinghua)","BKZ,Other",2014-02-8,0.88941,"A Genetic Algorithm with a Preprocessing of BKZ, using 505.028s on a IBM Blade"
+775,54,1768,10,Walter White,Other,2013-09-24,0.92909,
+776,54,1877,25,Jan Reichelt,Other,2011-05-23,0.98755,LLL-Prereduction - Ant Colony Optimization using Probabilistic Beam Search
+777,54,1904,2,"Michael Schneider, ï¿½zgï¿½r Dagdelen, Jan Reichelt","BKZ,Other",2010-11-23,1.00551,"Runningtime: 35 seconds, Calls: 6"
+778,54,1921,0,"Antonio Campello, Joï¿½o Strapasson and Cristiano Torezzan","BKZ,Other",2010-10-15,1.00899,"There are still vectors of norm 1956, 1957 and 1974 below the estimation."
+779,53,1477,1917,Jim Johnson,Sieving,2021-09-26,0.78337,Modified G6K Workout. Total CPU time: 0.0209s.
+780,53,1646,370,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-11-20,0.87915,
+781,53,1699,194,Malin Haque and Iftekharul Islam,"ENUM,BKZ",2015-10-8,0.90118,
+782,53,1731,14,Walter White,Other,2013-09-24,0.92038,
+783,53,1896,0,Malin Haque,BKZ,2013-04-24,1.00386,
+784,52,1557,8949,"Nariaki Tateiwa, Akihiro Yoshida, Satoshi Nakamura, Shizuo Kaji, Masaya Yasuda, Katsuki Fujisawa","ENUM,BKZ",2019-09-4,0.83006,parallel Enum
+785,52,1616,796,"Dan Ding, Guizhen Zhu and Xiaoyun Wang (Tsinghua)","BKZ,Other",2014-02-8,0.86719,"A Genetic Algorithm with a Preprocessing of BKZ, using 92.217s on a IBM Blade"
+786,52,1722,45,Moon Sung Lee,Sieving,2010-11-29,0.92927,
+787,52,1839,1,"Michael Schneider, ï¿½zgï¿½r Dagdelen, Jan Reichelt","BKZ,Other",2010-11-23,0.98459,
+788,52,1906,0,"Antonio Campello, Joï¿½o Strapasson and Cristiano Torezzan","BKZ,Other",2010-10-11,1.01697,"BKZ with block size 15 on the original basis, and then BKZ with block size 30 on the result"
+789,51,1588,1435,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-11-18,0.85577,
+790,51,1685,190,Hayato Waki and Masaya Yasuda,"BKZ,Other",2016-06-7,0.90914,
+791,51,1699,99,Walter White,Other,2013-09-24,0.91511,
+792,51,1880,101,Malin Haque,BKZ,2013-04-24,1.01319,
+793,51,1885,0,Dan Ding,"BKZ,Other",2013-02-18,1.01452,A genetic algorithm with a pre-reduction LLL.
+794,50,1472,3203,Felix Fontein,"ENUM,BKZ",2012-08-8,0.80123,"I processed all challenge lattices with seeds from 0 to 9999 by first running BKZ with blocksize 20 and alpha = 1, and then enumeration (parallel, on three cores) to find a shortest vector. The overall time was approx. 22 hours, which means in average 7.9 seconds per lattice (Intel i5-2400 3.1 GHz). I found 72 vectors shorter than the current shortest one. The ones beside this one have the following norms (corresponding seeds are in brackets):<br />1499.69 (1784), 1515.84 (2526), 1560.05 (1530), 1564.74 (9118), 1572.24 (1822), 1579.75 (1215), 1580.24 (1790), 1585.23 (6034), 1595.77 (4172), 1596.28 (2608), 1607.71 (7871), 1610.27 (7117), 1614.37 (371), 1615.25 (7737), 617.91 (9778), 1618.63 (5470), 619.27 (6827), 619.61 (6559), 1620.66 (8202), 1628.11 (6293), 1629.54 (3864), 1629.91 (4376), 1630.87 (5356), 1631.02 (5955), 1631.10 (191), 1633.47 (1460), 1634.69 (5825), 1634.72 (1623), 1634.91 (911), 1635.09 (7784), 1637.30 (3052), 1638.45 (4561), 1641.64 (6213), 1644.45 (2251), 1646.70 (3218), 1646.74 (3112), 1648.56 (9358), 1650.17 (4996), 1650.38 (2099), 1650.81 (647), 1651.75 (8325), 1652.62 (3727), 1655.78 (6437), 1656.35 (4363), 1657.12 (6073), 1657.47 (5141), 1659.89 (2564), 1663.17 (4441), 1663.26 (736), 1663.37 (5581), 1664.27 (581), 1664.74 (1917), 1666.61 (2460), 1667.65 (3200), 1668.95 (5755), 1670.14 (1654), 1671.65 (484), 1671.77 (7894), 1673.09 (9728), 1673.11 (5733), 1673.28 (9741), 1673.60 (4488), 1674.72 (6580), 1675.21 (9510), 1676.06 (3688), 1676.07 (2075), 1677.94 (1893), 1678.40 (6318), 1678.50 (7200), 1678.68 (8925), 1678.87 (5366)"
+795,50,1679,38,Moon Sung Lee,Sieving,2010-11-29,0.91602,
+796,50,1803,6,"Michael Schneider, ï¿½zgï¿½r Dagdelen, Jan Reichelt","BKZ,Other",2010-11-22,0.98541,Time: 14 seconds
+797,50,1847,2,Moon Sung Lee,Sieving,2010-10-25,1.01572,
+798,50,1864,1,Michael Schneider,ENUM,2010-05-11,1.01312,fplll
+799,50,1893,0,Michael Schneider,ENUM,2010-05-11,1.03084,fplll
