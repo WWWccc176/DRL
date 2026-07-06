@@ -539,16 +539,16 @@ class LatticeEnv:
         self.gamma_r = 1.0
         self.cost_w = 0.15
 
-        self.initial_pool_id = my_project_backend.create_matrix_lll_rust(raw_matrix_str)
+        self.initial_pool_id = my_project_backend.create_matrix_lll(raw_matrix_str)
 
-        init_eval = my_project_backend.evaluate_matrix_rust(self.initial_pool_id)
+        init_eval = my_project_backend.evaluate_matrix(self.initial_pool_id)
         self.initial_gs_logs = np.array(init_eval["gs_log_norms"], dtype=np.float32)
         self.log_vol = np.sum(self.initial_gs_logs)
         self.log_GH = (self.log_vol / self.dim) + 0.5 * math.log(
             self.dim / (2 * math.pi * math.e)
         )
 
-        init_info = my_project_backend.reduce_rust(
+        init_info = my_project_backend.reduce(
             self.initial_pool_id,
             "LLL",
             2,
@@ -572,16 +572,16 @@ class LatticeEnv:
 
             mat_list = parse_challenge_file(filepath)
             raw_str = matrix_to_string(mat_list)
-            pool_id = my_project_backend.create_matrix_lll_rust(raw_str)
+            pool_id = my_project_backend.create_matrix_lll(raw_str)
 
-            eval_info = my_project_backend.evaluate_matrix_rust(pool_id)
+            eval_info = my_project_backend.evaluate_matrix(pool_id)
             gs_logs = np.array(eval_info["gs_log_norms"], dtype=np.float32)
             log_vol = float(np.sum(gs_logs))
             log_GH = (log_vol / self.dim) + 0.5 * math.log(
                 self.dim / (2 * math.pi * math.e)
             )
 
-            lll_info = my_project_backend.reduce_rust(pool_id, "LLL", 2, 0)
+            lll_info = my_project_backend.reduce(pool_id, "LLL", 2, 0)
             initial_log_defect = float(lll_info["log_prod"] - log_vol)
             initial_log_ratio = float(gs_logs[0] - log_GH)
             defect_scale = max(abs(initial_log_defect), 1.0)
@@ -605,7 +605,7 @@ class LatticeEnv:
             max_cos = float(np.clip(np.max(lower) if lower.size > 0 else 0.0, 0.0, 1.0))
             min_cos = float(np.clip(np.min(lower) if lower.size > 0 else 0.0, 0.0, 1.0))
 
-            mat_str = my_project_backend.dump_matrix_rust(pool_id)
+            mat_str = my_project_backend.dump_matrix(pool_id)
             mat_list_reduced = string_to_matrix_fast(mat_str)
 
             self.seed_best_ratios[sid] = true_ratio
@@ -653,23 +653,21 @@ class LatticeEnv:
 
         if hasattr(self, "current_pool_id") and self.current_pool_id >= 0:
             try:
-                my_project_backend.free_matrix_rust(self.current_pool_id)
+                my_project_backend.free_matrix(self.current_pool_id)
             except Exception:
                 pass
 
-        self.current_pool_id = my_project_backend.clone_matrix_rust(
-            self.initial_pool_id
-        )
+        self.current_pool_id = my_project_backend.clone_matrix(self.initial_pool_id)
 
         if self.current_pool_id < 0:
             raise RuntimeError(
-                f"clone_matrix_rust failed: "
+                f"clone_matrix failed: "
                 f"initial_pool_id={self.initial_pool_id}, "
                 f"seed={chosen_sid}, "
                 f"file={self.current_filepath}"
             )
 
-        init_info = my_project_backend.reduce_rust(
+        init_info = my_project_backend.reduce(
             self.current_pool_id,
             "LLL",
             2,
@@ -707,7 +705,7 @@ class LatticeEnv:
         min_cos = float(np.clip(np.min(lower) if lower.size > 0 else 0.0, 0.0, 1.0))
         C = C + C.T
 
-        rust_eval = my_project_backend.evaluate_matrix_rust(self.current_pool_id)
+        rust_eval = my_project_backend.evaluate_matrix(self.current_pool_id)
         gs_logs = np.array(rust_eval["gs_log_norms"], dtype=np.float32)
 
         log_b1 = gs_logs[0]
@@ -749,7 +747,7 @@ class LatticeEnv:
 
         if is_seed_best:
             self.seed_best_ratios[sid] = true_b1_GH_ratio
-            mat_str = my_project_backend.dump_matrix_rust(self.current_pool_id)
+            mat_str = my_project_backend.dump_matrix(self.current_pool_id)
             mat_list = string_to_matrix_fast(mat_str)
             if mat_list:
                 self.seed_best_infos[sid] = {
@@ -784,7 +782,7 @@ class LatticeEnv:
         old_max_cos = self._cached_max_cos
         old_log_def = self._cached_log_def
 
-        bkz_info = my_project_backend.reduce_rust(
+        bkz_info = my_project_backend.reduce(
             self.current_pool_id, "LOCAL_BKZ", beta, pos
         )
 
@@ -794,7 +792,7 @@ class LatticeEnv:
             or self.current_step >= self.max_steps - 1
         )
         if do_lll:
-            lll_info = my_project_backend.reduce_rust(self.current_pool_id, "LLL", 2, 0)
+            lll_info = my_project_backend.reduce(self.current_pool_id, "LLL", 2, 0)
             self.last_rust_info = lll_info
         else:
             self.last_rust_info = bkz_info
@@ -804,10 +802,8 @@ class LatticeEnv:
 
         if done:
             final_beta = min(self.dim, 40)
-            my_project_backend.reduce_rust(
-                self.current_pool_id, "LOCAL_BKZ", final_beta, 0
-            )
-            self.last_rust_info = my_project_backend.reduce_rust(
+            my_project_backend.reduce(self.current_pool_id, "LOCAL_BKZ", final_beta, 0)
+            self.last_rust_info = my_project_backend.reduce(
                 self.current_pool_id, "LLL", 2, 0
             )
 
@@ -1479,4 +1475,3 @@ if __name__ == "__main__":
     ]
     for dim in DIMS_TO_RUN:
         run_experiment(dim, DATASET_DIR, RESULTS_DIR)
-

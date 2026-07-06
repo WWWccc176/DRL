@@ -1,0 +1,4 @@
+  File "/home/pyjast1123/workspace/builds/g6k/setup.py", line 53
+    extra_compile_args = read_from_makefile("CXXFLAGS")\nextra_compile_args += ["-I/usr/local/cuda/include", "-I/opt/cuda/include", "-Iparallel-hashmap", "-Ikernel", "-Ig6k"]\nextra_compile_args = [x for x in extra_compile_args if x != "-lineinfo"]\nextra_compile_args = list(dict.fromkeys(extra_compile_args))\nextra_compile_args += ["-I/usr/local/cuda/include", "-I/opt/cuda/include", "-Iparallel-hashmap", "-Ikernel", "-Ig6k"]\nextra_compile_args = [x for x in extra_compile_args if x != "-lineinfo"]\nextra_compile_args = list(dict.fromkeys(extra_compile_args))
+                                                        ^
+SyntaxError: unexpected character after line continuation character

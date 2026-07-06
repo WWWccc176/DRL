@@ -1,0 +1,21 @@
+[g6k_env] chdir -> /home/pyjast1123/workspace/builds/g6k
+== import g6k ==
+g6k file: /home/pyjast1123/workspace/builds/g6k/g6k/__init__.py
+g6k root (cwd): /home/pyjast1123/workspace/builds/g6k
+
+== load one dim70 block ==
+block: 40 x 70
+
+== build GPU Siever (raw, no try/except) ==
+params: {'reserved_n': 0, 'reserved_db_size': 0, 'threads': 1, 'sample_by_sums': True, 'otf_lift': True, 'lift_radius': 1.8, 'lift_unitary_only': True, 'goal_r0': -1.0, 'saturation_ratio': 0.5, 'saturation_radius': 1.3333333333333333, 'triplesieve_saturation_radius': 1.299, 'bgj1_improvement_db_ratio': 0.65, 'bgj1_resort_ratio': 0.85, 'bgj1_transaction_bulk_size': 0, 'simhash_codes_basedir': b'.', 'gpus': 1, 'streams_per_thread': 1, 'dh_dim': 16, 'dh_vecs': 64, 'dh_bucket_ratio': 0.5, 'multi_bucket': 4, 'max_nr_buckets': 65536, 'lenbound_ratio': 0.8500000238418579, 'bdgl_bucket_size': 16384, 'gpu_bucketer': b'bdgl', 'gpu_triple': False, 'db_size_base': 1.1547005383792515, 'db_size_factor': 3.2, 'db_limit': -1, 'bgj1_bucket_size_expo': 0.5, 'bgj1_bucket_size_factor': 3.2, 'triplesieve_db_size_base': 1.1401315713548152, 'triplesieve_db_size_factor': 2.5, 'default_sieve': 'gpu', 'gauss_crossover': 40, 'dual_mode': False, 'dh_dim4free': 32, 'dh_min': 90}
+Siever OK. relevant methods:
+  ['__init__', '__init_subclass__', '_stat_c_otflifts_2inner', '_stat_c_otflifts_2outer', '_stat_c_otflifts_3', '_stat_c_otflifts_total', '_stat_c_sorting_sieve', '_stat_get_otflifts_2inner', '_stat_get_otflifts_2outer', '_stat_get_otflifts_3', '_stat_get_otflifts_total', '_stat_get_sorting_sieve', 'best_lifts', 'bgj1_sieve', 'db_lift_probability', 'gauss_sieve', 'gauss_triple_sieve_st', 'gpu_sieve', 'initialize_local', 'insert_best_lift', 'nv_sieve', 'statistics_lift_hash']
+
+== sieve ==
+calling gpu_sieve()
+sieve done
+
+== lifts ==
+best_lifts: (1, (0, np.float64(95698215293.00002)))
+
+SMOKE OK

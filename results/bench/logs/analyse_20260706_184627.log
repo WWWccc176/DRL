@@ -1,0 +1,6 @@
+loaded 1476 records; methods=['BKZ', 'ENUM', 'ENUM_SIEVE', 'LLL']  dims=70..110
+>> per_dim_stats.csv / per_dim_stats.txt / stats_by_method.csv
+>> figures/scatter_b1gh_vs_dim.png
+>> figures/scatter_maxcos_vs_dim.png
+>> figures/heatmap_cos_dim10.png
+>> done. outputs in /home/pyjast1123/DRL/results/bench

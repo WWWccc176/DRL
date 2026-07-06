@@ -1,0 +1,75 @@
+want_cuda: maybe
+cuda_path: /usr/local/cuda
+nvcc_path: /opt/cuda/bin/nvcc
+nvcc version: 13.3
+CUDA_FLAGS: -lineinfo -I/usr/local/cuda/include -I../parallel-hashmap
+CUDA_LIBS: -L/usr/local/cuda/lib64 -Wl,-rpath=/usr/local/cuda/lib64 -lcudart -L/usr/local/cuda/lib64/stubs -Wl,-rpath=/usr/local/cuda/lib64/stubs -lcuda -lcublas -lcurand
+Cloning into 'parallel-hashmap'...
+rm: cannot remove 'build': No such file or directory
+rm: cannot remove '*.so': No such file or directory
+rm: cannot remove 'g6k/*.so': No such file or directory
+rm: cannot remove 'cuda/*.so': No such file or directory
+rm: cannot remove 'kernel/*.so': No such file or directory
+make: Entering directory '/home/pyjast1123/workspace/builds/g6k/kernel'
+g++ -fPIC -Ofast -march=native -ftree-vectorize -funroll-loops -std=c++11 -pthread -Wall -Wextra -DNOYR=1 -DPOPCOUNT=0 -DNDEBUG -DTEMPLATED_DIM -DMAX_SIEVING_DIM=128 -DGPUVECNUM=65536 -DHAVE_CUDA -I../parallel-hashmap -lineinfo -I/usr/local/cuda/include -I../parallel-hashmap -c sieving.cpp -o sieving.o
+In file included from sieving.cpp:1:
+siever.h:34:10: fatal error: cuda_runtime.h: No such file or directory
+   34 | #include <cuda_runtime.h>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+make: *** [Makefile:47: sieving.o] Error 1
+make: Leaving directory '/home/pyjast1123/workspace/builds/g6k/kernel'
+Traceback (most recent call last):
+  File "/home/pyjast1123/workspace/builds/g6k/setup.py", line 14, in <module>
+    subprocess.check_call("make -C kernel",shell=True)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/pyjast1123/.local/share/uv/python/cpython-3.13.12-linux-x86_64-gnu/lib/python3.13/subprocess.py", line 419, in check_call
+    raise CalledProcessError(retcode, cmd)
+subprocess.CalledProcessError: Command 'make -C kernel' returned non-zero exit status 2.
+make: Entering directory '/home/pyjast1123/workspace/builds/g6k/kernel'
+rm sieving.o control.o bgj1_sieve.o gpu_sieve.o triple_sieve.o params.o cpuperf.o triple_sieve_mt.o ../cuda/GPUStreamGeneral.o *.o *.so ../*.so
+rm: cannot remove 'sieving.o': No such file or directory
+rm: cannot remove 'control.o': No such file or directory
+rm: cannot remove 'bgj1_sieve.o': No such file or directory
+rm: cannot remove 'gpu_sieve.o': No such file or directory
+rm: cannot remove 'triple_sieve.o': No such file or directory
+rm: cannot remove 'params.o': No such file or directory
+rm: cannot remove 'cpuperf.o': No such file or directory
+rm: cannot remove 'triple_sieve_mt.o': No such file or directory
+rm: cannot remove '../cuda/GPUStreamGeneral.o': No such file or directory
+rm: cannot remove '*.o': No such file or directory
+rm: cannot remove '*.so': No such file or directory
+rm: cannot remove '../*.so': No such file or directory
+make: [Makefile:54: clean] Error 1 (ignored)
+make: Leaving directory '/home/pyjast1123/workspace/builds/g6k/kernel'
+make: Entering directory '/home/pyjast1123/workspace/builds/g6k/kernel'
+g++ -fPIC -Ofast -march=native -ftree-vectorize -funroll-loops -std=c++11 -pthread -Wall -Wextra -DNOYR=1 -DPOPCOUNT=0 -DNDEBUG -DTEMPLATED_DIM -DMAX_SIEVING_DIM=128 -DGPUVECNUM=65536 -DHAVE_CUDA -I../parallel-hashmap -lineinfo -I/usr/local/cuda/include -I../parallel-hashmap -c sieving.cpp -o sieving.o
+g++ -fPIC -Ofast -march=native -ftree-vectorize -funroll-loops -std=c++11 -pthread -Wall -Wextra -DNOYR=1 -DPOPCOUNT=0 -DNDEBUG -DTEMPLATED_DIM -DMAX_SIEVING_DIM=128 -DGPUVECNUM=65536 -DHAVE_CUDA -I../parallel-hashmap -lineinfo -I/usr/local/cuda/include -I../parallel-hashmap -c control.cpp -o control.o
+g++ -fPIC -Ofast -march=native -ftree-vectorize -funroll-loops -std=c++11 -pthread -Wall -Wextra -DNOYR=1 -DPOPCOUNT=0 -DNDEBUG -DTEMPLATED_DIM -DMAX_SIEVING_DIM=128 -DGPUVECNUM=65536 -DHAVE_CUDA -I../parallel-hashmap -lineinfo -I/usr/local/cuda/include -I../parallel-hashmap -c bgj1_sieve.cpp -o bgj1_sieve.o
+g++ -fPIC -Ofast -march=native -ftree-vectorize -funroll-loops -std=c++11 -pthread -Wall -Wextra -DNOYR=1 -DPOPCOUNT=0 -DNDEBUG -DTEMPLATED_DIM -DMAX_SIEVING_DIM=128 -DGPUVECNUM=65536 -DHAVE_CUDA -I../parallel-hashmap -lineinfo -I/usr/local/cuda/include -I../parallel-hashmap -c gpu_sieve.cpp -o gpu_sieve.o
+In file included from gpu_sieve.cpp:3:
+../cuda/GPUStreamGeneral.h:13:10: fatal error: cuda_runtime.h: No such file or directory
+   13 | #include <cuda_runtime.h>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+make: *** [Makefile:47: gpu_sieve.o] Error 1
+make: *** Waiting for unfinished jobs....
+In file included from bgj1_sieve.cpp:1:
+siever.h:34:10: fatal error: cuda_runtime.h: No such file or directory
+   34 | #include <cuda_runtime.h>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+In file included from control.cpp:3:
+siever.h:34:10: fatal error: cuda_runtime.h: No such file or directory
+   34 | #include <cuda_runtime.h>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+In file included from sieving.cpp:1:
+siever.h:34:10: fatal error: cuda_runtime.h: No such file or directory
+   34 | #include <cuda_runtime.h>
+      |          ^~~~~~~~~~~~~~~~
+compilation terminated.
+make: *** [Makefile:47: bgj1_sieve.o] Error 1
+make: *** [Makefile:47: control.o] Error 1
+make: *** [Makefile:47: sieving.o] Error 1
+make: Leaving directory '/home/pyjast1123/workspace/builds/g6k/kernel'

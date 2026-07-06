@@ -1,0 +1,974 @@
+make: Entering directory '/home/pyjast1123/workspace/builds/g6k/kernel'
+g++ -fPIC -Ofast -march=native -ftree-vectorize -funroll-loops -std=c++11 -pthread -Wall -Wextra -DMAX_SIEVING_DIM=128 -DGPUVECNUM=65536 -DHAVE_CUDA -I../parallel-hashmap -lineinfo -I/usr/local/cuda/include -I../parallel-hashmap -c sieving.cpp -o sieving.o
+In file included from sieving.cpp:1:
+siever.h: In constructor ‘UidHashTable::UidHashTable()’:
+siever.h:254:18: warning: ‘UidHashTable::n’ will be initialized after [-Wreorder]
+  254 |     unsigned int n; // dimension of points in the domain of the hash function.
+      |                  ^
+siever.h:221:24: warning:   ‘std::vector<long unsigned int> UidHashTable::uid_coeffs’ [-Wreorder]
+  221 |   std::vector<UidType> uid_coeffs;        // description of the hash function.
+      |                        ^~~~~~~~~~
+siever.h:193:12: warning:   when initialized here [-Wreorder]
+  193 |   explicit UidHashTable() : db_uid(), n(0), uid_coeffs(), reserve_size(0)
+      |            ^~~~~~~~~~~~
+siever.h: In constructor ‘Siever::Siever(const SieverParams&, long unsigned int)’:
+siever.h:708:18: warning: ‘Siever::n’ will be initialized after [-Wreorder]
+  708 |     unsigned int n;                           // current context dimension, n = r - l
+      |                  ^
+siever.h:705:18: warning:   ‘unsigned int Siever::ll’ [-Wreorder]
+  705 |     unsigned int ll;
+      |                  ^~
+siever.h:522:14: warning:   when initialized here [-Wreorder]
+  522 |     explicit Siever(const SieverParams &params, unsigned long int seed = 0) :
+      |              ^~~~~~
+In file included from siever.h:1287:
+db.inl: In member function ‘bool Siever::verify_integrity(bool)’:
+db.inl:41:43: warning: unused parameter ‘test_bijection’ [-Wunused-parameter]
+   41 | inline bool Siever::verify_integrity(bool test_bijection)
+      |                                      ~~~~~^~~~~~~~~~~~~~
+g++ -fPIC -Ofast -march=native -ftree-vectorize -funroll-loops -std=c++11 -pthread -Wall -Wextra -DMAX_SIEVING_DIM=128 -DGPUVECNUM=65536 -DHAVE_CUDA -I../parallel-hashmap -lineinfo -I/usr/local/cuda/include -I../parallel-hashmap -c control.cpp -o control.o
+In file included from control.cpp:3:
+siever.h: In constructor ‘UidHashTable::UidHashTable()’:
+siever.h:254:18: warning: ‘UidHashTable::n’ will be initialized after [-Wreorder]
+  254 |     unsigned int n; // dimension of points in the domain of the hash function.
+      |                  ^
+siever.h:221:24: warning:   ‘std::vector<long unsigned int> UidHashTable::uid_coeffs’ [-Wreorder]
+  221 |   std::vector<UidType> uid_coeffs;        // description of the hash function.
+      |                        ^~~~~~~~~~
+siever.h:193:12: warning:   when initialized here [-Wreorder]
+  193 |   explicit UidHashTable() : db_uid(), n(0), uid_coeffs(), reserve_size(0)
+      |            ^~~~~~~~~~~~
+siever.h: In constructor ‘Siever::Siever(const SieverParams&, long unsigned int)’:
+siever.h:708:18: warning: ‘Siever::n’ will be initialized after [-Wreorder]
+  708 |     unsigned int n;                           // current context dimension, n = r - l
+      |                  ^
+siever.h:705:18: warning:   ‘unsigned int Siever::ll’ [-Wreorder]
+  705 |     unsigned int ll;
+      |                  ^~
+siever.h:522:14: warning:   when initialized here [-Wreorder]
+  522 |     explicit Siever(const SieverParams &params, unsigned long int seed = 0) :
+      |              ^~~~~~
+In file included from siever.h:1287:
+db.inl: In member function ‘bool Siever::verify_integrity(bool)’:
+db.inl:41:43: warning: unused parameter ‘test_bijection’ [-Wunused-parameter]
+   41 | inline bool Siever::verify_integrity(bool test_bijection)
+      |                                      ~~~~~^~~~~~~~~~~~~~
+control.cpp: In member function ‘void Siever::initialize_local(unsigned int, unsigned int, unsigned int)’:
+control.cpp:169:32: warning: comparison of integer expressions of different signedness: ‘int’ and ‘unsigned int’ [-Wsign-compare]
+  169 |             for (int i = l_; i < r_; ++i)
+      |                              ~~^~~~
+control.cpp:185:23: warning: comparison of integer expressions of different signedness: ‘int’ and ‘unsigned int’ [-Wsign-compare]
+  185 |     for (int i = 0; i < ll; ++i)
+      |                     ~~^~~~
+control.cpp:190:24: warning: comparison of integer expressions of different signedness: ‘int’ and ‘unsigned int’ [-Wsign-compare]
+  190 |     for (int i = ll; i < ll_; ++i)
+      |                      ~~^~~~~
+control.cpp:202:12: warning: unused variable ‘time_best_lifts_so_far’ [-Wunused-variable]
+  202 |     double time_best_lifts_so_far = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+      |            ^~~~~~~~~~~~~~~~~~~~~~
+control.cpp:208:12: warning: unused variable ‘time_invalidate_histo’ [-Wunused-variable]
+  208 |     double time_invalidate_histo = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+      |            ^~~~~~~~~~~~~~~~~~~~~
+control.cpp:244:12: warning: unused variable ‘time_mu_and_gh’ [-Wunused-variable]
+  244 |     double time_mu_and_gh = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+      |            ^~~~~~~~~~~~~~
+control.cpp:247:12: warning: unused variable ‘time_lift_bounds’ [-Wunused-variable]
+  247 |     double time_lift_bounds = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+      |            ^~~~~~~~~~~~~~~~
+control.cpp:250:12: warning: unused variable ‘time_simhash_reset’ [-Wunused-variable]
+  250 |     double time_simhash_reset = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+      |            ^~~~~~~~~~~~~~~~~~
+control.cpp:253:12: warning: unused variable ‘time_uid_reset’ [-Wunused-variable]
+  253 |     double time_uid_reset = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+      |            ^~~~~~~~~~~~~~
+control.cpp:257:12: warning: unused variable ‘time_invalidate_sorting’ [-Wunused-variable]
+  257 |     double time_invalidate_sorting = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+      |            ^~~~~~~~~~~~~~~~~~~~~~~
+control.cpp:266:12: warning: unused variable ‘time_gpu_init’ [-Wunused-variable]
+  266 |     double time_gpu_init = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+      |            ^~~~~~~~~~~~~
+control.cpp: In member function ‘void Siever::gso_update_postprocessing(unsigned int, unsigned int, const long int*)’:
+control.cpp:436:12: warning: unused variable ‘time_context_change’ [-Wunused-variable]
+  436 |     double time_context_change = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+      |            ^~~~~~~~~~~~~~~~~~~
+control.cpp:458:12: warning: unused variable ‘time_recompute_lifts’ [-Wunused-variable]
+  458 |     double time_recompute_lifts = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+      |            ^~~~~~~~~~~~~~~~~~~~
+control.cpp:474:12: warning: unused variable ‘time_xtransform’ [-Wunused-variable]
+  474 |     double time_xtransform = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+      |            ^~~~~~~~~~~~~~~
+control.cpp:477:12: warning: variable ‘time_recompute’ set but not used [-Wunused-but-set-variable=]
+  477 |     double time_recompute = 0.;
+      |            ^~~~~~~~~~~~~~
+control.cpp:478:12: warning: variable ‘time_lift’ set but not used [-Wunused-but-set-variable=]
+  478 |     double time_lift = 0.;
+      |            ^~~~~~~~~
+control.cpp:499:12: warning: unused variable ‘time_refresh’ [-Wunused-variable]
+  499 |     double time_refresh = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start_time).count();
+      |            ^~~~~~~~~~~~
+g++ -fPIC -Ofast -march=native -ftree-vectorize -funroll-loops -std=c++11 -pthread -Wall -Wextra -DMAX_SIEVING_DIM=128 -DGPUVECNUM=65536 -DHAVE_CUDA -I../parallel-hashmap -lineinfo -I/usr/local/cuda/include -I../parallel-hashmap -c bgj1_sieve.cpp -o bgj1_sieve.o
+In file included from bgj1_sieve.cpp:1:
+siever.h: In constructor ‘UidHashTable::UidHashTable()’:
+siever.h:254:18: warning: ‘UidHashTable::n’ will be initialized after [-Wreorder]
+  254 |     unsigned int n; // dimension of points in the domain of the hash function.
+      |                  ^
+siever.h:221:24: warning:   ‘std::vector<long unsigned int> UidHashTable::uid_coeffs’ [-Wreorder]
+  221 |   std::vector<UidType> uid_coeffs;        // description of the hash function.
+      |                        ^~~~~~~~~~
+siever.h:193:12: warning:   when initialized here [-Wreorder]
+  193 |   explicit UidHashTable() : db_uid(), n(0), uid_coeffs(), reserve_size(0)
+      |            ^~~~~~~~~~~~
+siever.h: In constructor ‘Siever::Siever(const SieverParams&, long unsigned int)’:
+siever.h:708:18: warning: ‘Siever::n’ will be initialized after [-Wreorder]
+  708 |     unsigned int n;                           // current context dimension, n = r - l
+      |                  ^
+siever.h:705:18: warning:   ‘unsigned int Siever::ll’ [-Wreorder]
+  705 |     unsigned int ll;
+      |                  ^~
+siever.h:522:14: warning:   when initialized here [-Wreorder]
+  522 |     explicit Siever(const SieverParams &params, unsigned long int seed = 0) :
+      |              ^~~~~~
+In file included from siever.h:1287:
+db.inl: In member function ‘bool Siever::verify_integrity(bool)’:
+db.inl:41:43: warning: unused parameter ‘test_bijection’ [-Wunused-parameter]
+   41 | inline bool Siever::verify_integrity(bool test_bijection)
+      |                                      ~~~~~^~~~~~~~~~~~~~
+g++ -fPIC -Ofast -march=native -ftree-vectorize -funroll-loops -std=c++11 -pthread -Wall -Wextra -DMAX_SIEVING_DIM=128 -DGPUVECNUM=65536 -DHAVE_CUDA -I../parallel-hashmap -lineinfo -I/usr/local/cuda/include -I../parallel-hashmap -c gpu_sieve.cpp -o gpu_sieve.o
+In file included from ../cuda/GPUStreamGeneral.h:17,
+                 from gpu_sieve.cpp:3:
+../cuda/../kernel/siever.h: In constructor ‘UidHashTable::UidHashTable()’:
+../cuda/../kernel/siever.h:254:18: warning: ‘UidHashTable::n’ will be initialized after [-Wreorder]
+  254 |     unsigned int n; // dimension of points in the domain of the hash function.
+      |                  ^
+../cuda/../kernel/siever.h:221:24: warning:   ‘std::vector<long unsigned int> UidHashTable::uid_coeffs’ [-Wreorder]
+  221 |   std::vector<UidType> uid_coeffs;        // description of the hash function.
+      |                        ^~~~~~~~~~
+../cuda/../kernel/siever.h:193:12: warning:   when initialized here [-Wreorder]
+  193 |   explicit UidHashTable() : db_uid(), n(0), uid_coeffs(), reserve_size(0)
+      |            ^~~~~~~~~~~~
+../cuda/../kernel/siever.h: In constructor ‘Siever::Siever(const SieverParams&, long unsigned int)’:
+../cuda/../kernel/siever.h:708:18: warning: ‘Siever::n’ will be initialized after [-Wreorder]
+  708 |     unsigned int n;                           // current context dimension, n = r - l
+      |                  ^
+../cuda/../kernel/siever.h:705:18: warning:   ‘unsigned int Siever::ll’ [-Wreorder]
+  705 |     unsigned int ll;
+      |                  ^~
+../cuda/../kernel/siever.h:522:14: warning:   when initialized here [-Wreorder]
+  522 |     explicit Siever(const SieverParams &params, unsigned long int seed = 0) :
+      |              ^~~~~~
+In file included from ../cuda/../kernel/siever.h:1287:
+../cuda/../kernel/db.inl: In member function ‘bool Siever::verify_integrity(bool)’:
+../cuda/../kernel/db.inl:41:43: warning: unused parameter ‘test_bijection’ [-Wunused-parameter]
+   41 | inline bool Siever::verify_integrity(bool test_bijection)
+      |                                      ~~~~~^~~~~~~~~~~~~~
+gpu_sieve.cpp: In member function ‘void Siever::gpu_bucketing_prepare(std::size_t, const std::vector<long unsigned int>&)’:
+gpu_sieve.cpp:196:27: warning: comparison of integer expressions of different signedness: ‘int’ and ‘unsigned int’ [-Wsign-compare]
+  196 |         for( int i = 0; i < n; i++ ) {
+      |                         ~~^~~
+gpu_sieve.cpp:197:31: warning: comparison of integer expressions of different signedness: ‘int’ and ‘unsigned int’ [-Wsign-compare]
+  197 |             for( int j = 0; j < n; j++ ) {
+      |                             ~~^~~
+gpu_sieve.cpp:199:35: warning: comparison of integer expressions of different signedness: ‘int’ and ‘unsigned int’ [-Wsign-compare]
+  199 |                 for( int k = 0; k < n; k++ ) {
+      |                                 ~~^~~
+gpu_sieve.cpp: In lambda function:
+gpu_sieve.cpp:209:83: warning: comparison of integer expressions of different signedness: ‘int’ and ‘long unsigned int’ [-Wsign-compare]
+  209 |             size_t streams = std::min( gpu_general[0].size(), chunks/th_n + (th_i < (chunks%th_n)));
+      |                                                                              ~~~~~^~~~~~~~~~~~~~~
+gpu_sieve.cpp: In lambda function:
+gpu_sieve.cpp:312:38: warning: comparison of integer expressions of different signedness: ‘std::size_t’ {aka ‘long unsigned int’} and ‘int’ [-Wsign-compare]
+  312 |                 for( size_t i = 0; i < threads; i++ ) {
+      |                                    ~~^~~~~~~~~
+gpu_sieve.cpp:323:38: warning: comparison of integer expressions of different signedness: ‘std::size_t’ {aka ‘long unsigned int’} and ‘int’ [-Wsign-compare]
+  323 |                 for( size_t i = 0; i < threads; i++ ) {
+      |                                    ~~^~~~~~~~~
+gpu_sieve.cpp: In member function ‘void Siever::gpu_sieve_replace(std::size_t, std::size_t, std::deque<Entry>&, std::size_t&)’:
+gpu_sieve.cpp:625:46: warning: comparison of integer expressions of different signedness: ‘int64_t’ {aka ‘long int’} and ‘const std::size_t’ {aka ‘const long unsigned int’} [-Wsign-compare]
+  625 |     for(; !transaction_db.empty() && i_index >= threads; ++t_index)
+      |                                      ~~~~~~~~^~~~~~~~~~
+gpu_sieve.cpp:624:13: warning: variable ‘t_index’ set but not used [-Wunused-but-set-variable=]
+  624 |     int64_t t_index = 0;
+      |             ^~~~~~~
+gpu_sieve.cpp:622:46: warning: unused parameter ‘t_id’ [-Wunused-parameter]
+  622 | void Siever::gpu_sieve_replace( const size_t t_id, const size_t threads, std::deque<Entry> &transaction_db, size_t &min_i_index ) {
+      |                                 ~~~~~~~~~~~~~^~~~
+gpu_sieve.cpp: In member function ‘void Siever::gpu_sieve()’:
+gpu_sieve.cpp:762:12: warning: unused variable ‘lenbound_ratio’ [-Wunused-variable]
+  762 |     double lenbound_ratio = params.lenbound_ratio;
+      |            ^~~~~~~~~~~~~~
+In file included from ../cuda/../kernel/siever.inl:8,
+                 from ../cuda/../kernel/siever.h:1285:
+../cuda/../kernel/parallel_algorithms.hpp: In instantiation of ‘void parallel_algorithms::nth_element(RandIt, RandIt, RandIt, Compare, Threadpool&, std::size_t) [with RandIt = __gnu_cxx::__normal_iterator<long unsigned int*, std::vector<long unsigned int> >; Compare = Siever::gpu_sieve()::<lambda(std::size_t, std::size_t)>; Threadpool = thread_pool::thread_pool; std::size_t = long unsigned int]’:
+gpu_sieve.cpp:932:28:   required from here
+  932 |             pa::nth_element(bucketcenters.begin(), bucketcenters.begin()+nr_buckets, bucketcenters.end(), cf, threadpool);
+      |             ~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../cuda/../kernel/parallel_algorithms.hpp:359:34: warning: comparison of integer expressions of different signedness: ‘difference_type’ {aka ‘long int’} and ‘std::size_t’ {aka ‘long unsigned int’} [-Wsign-compare]
+  359 |                         if (dist <= chunksize*4)
+      |                             ~~~~~^~~~~~~~~~~~~~
+In file included from /usr/include/c++/16/cassert:46,
+                 from ../cuda/../kernel/parallel_algorithms.hpp:34:
+../cuda/../kernel/parallel_algorithms.hpp:367:46: warning: comparison of integer expressions of different signedness: ‘const std::size_t’ {aka ‘const long unsigned int’} and ‘difference_type’ {aka ‘long int’} [-Wsign-compare]
+  367 |                         assert(selectionsize <= dist);
+      |                                ~~~~~~~~~~~~~~^~~~~~~
+g++ -fPIC -Ofast -march=native -ftree-vectorize -funroll-loops -std=c++11 -pthread -Wall -Wextra -DMAX_SIEVING_DIM=128 -DGPUVECNUM=65536 -DHAVE_CUDA -I../parallel-hashmap -lineinfo -I/usr/local/cuda/include -I../parallel-hashmap -c triple_sieve.cpp -o triple_sieve.o
+In file included from triple_sieve.cpp:1:
+siever.h: In constructor ‘UidHashTable::UidHashTable()’:
+siever.h:254:18: warning: ‘UidHashTable::n’ will be initialized after [-Wreorder]
+  254 |     unsigned int n; // dimension of points in the domain of the hash function.
+      |                  ^
+siever.h:221:24: warning:   ‘std::vector<long unsigned int> UidHashTable::uid_coeffs’ [-Wreorder]
+  221 |   std::vector<UidType> uid_coeffs;        // description of the hash function.
+      |                        ^~~~~~~~~~
+siever.h:193:12: warning:   when initialized here [-Wreorder]
+  193 |   explicit UidHashTable() : db_uid(), n(0), uid_coeffs(), reserve_size(0)
+      |            ^~~~~~~~~~~~
+siever.h: In constructor ‘Siever::Siever(const SieverParams&, long unsigned int)’:
+siever.h:708:18: warning: ‘Siever::n’ will be initialized after [-Wreorder]
+  708 |     unsigned int n;                           // current context dimension, n = r - l
+      |                  ^
+siever.h:705:18: warning:   ‘unsigned int Siever::ll’ [-Wreorder]
+  705 |     unsigned int ll;
+      |                  ^~
+siever.h:522:14: warning:   when initialized here [-Wreorder]
+  522 |     explicit Siever(const SieverParams &params, unsigned long int seed = 0) :
+      |              ^~~~~~
+In file included from siever.h:1287:
+db.inl: In member function ‘bool Siever::verify_integrity(bool)’:
+db.inl:41:43: warning: unused parameter ‘test_bijection’ [-Wunused-parameter]
+   41 | inline bool Siever::verify_integrity(bool test_bijection)
+      |                                      ~~~~~^~~~~~~~~~~~~~
+g++ -fPIC -Ofast -march=native -ftree-vectorize -funroll-loops -std=c++11 -pthread -Wall -Wextra -DMAX_SIEVING_DIM=128 -DGPUVECNUM=65536 -DHAVE_CUDA -I../parallel-hashmap -lineinfo -I/usr/local/cuda/include -I../parallel-hashmap -c params.cpp -o params.o
+In file included from params.cpp:1:
+siever.h: In constructor ‘UidHashTable::UidHashTable()’:
+siever.h:254:18: warning: ‘UidHashTable::n’ will be initialized after [-Wreorder]
+  254 |     unsigned int n; // dimension of points in the domain of the hash function.
+      |                  ^
+siever.h:221:24: warning:   ‘std::vector<long unsigned int> UidHashTable::uid_coeffs’ [-Wreorder]
+  221 |   std::vector<UidType> uid_coeffs;        // description of the hash function.
+      |                        ^~~~~~~~~~
+siever.h:193:12: warning:   when initialized here [-Wreorder]
+  193 |   explicit UidHashTable() : db_uid(), n(0), uid_coeffs(), reserve_size(0)
+      |            ^~~~~~~~~~~~
+siever.h: In constructor ‘Siever::Siever(const SieverParams&, long unsigned int)’:
+siever.h:708:18: warning: ‘Siever::n’ will be initialized after [-Wreorder]
+  708 |     unsigned int n;                           // current context dimension, n = r - l
+      |                  ^
+siever.h:705:18: warning:   ‘unsigned int Siever::ll’ [-Wreorder]
+  705 |     unsigned int ll;
+      |                  ^~
+siever.h:522:14: warning:   when initialized here [-Wreorder]
+  522 |     explicit Siever(const SieverParams &params, unsigned long int seed = 0) :
+      |              ^~~~~~
+In file included from siever.h:1287:
+db.inl: In member function ‘bool Siever::verify_integrity(bool)’:
+db.inl:41:43: warning: unused parameter ‘test_bijection’ [-Wunused-parameter]
+   41 | inline bool Siever::verify_integrity(bool test_bijection)
+      |                                      ~~~~~^~~~~~~~~~~~~~
+g++ -fPIC -Ofast -march=native -ftree-vectorize -funroll-loops -std=c++11 -pthread -Wall -Wextra -DMAX_SIEVING_DIM=128 -DGPUVECNUM=65536 -DHAVE_CUDA -I../parallel-hashmap -lineinfo -I/usr/local/cuda/include -I../parallel-hashmap -c cpuperf.cpp -o cpuperf.o
+In file included from cpuperf.cpp:1:
+siever.h: In constructor ‘UidHashTable::UidHashTable()’:
+siever.h:254:18: warning: ‘UidHashTable::n’ will be initialized after [-Wreorder]
+  254 |     unsigned int n; // dimension of points in the domain of the hash function.
+      |                  ^
+siever.h:221:24: warning:   ‘std::vector<long unsigned int> UidHashTable::uid_coeffs’ [-Wreorder]
+  221 |   std::vector<UidType> uid_coeffs;        // description of the hash function.
+      |                        ^~~~~~~~~~
+siever.h:193:12: warning:   when initialized here [-Wreorder]
+  193 |   explicit UidHashTable() : db_uid(), n(0), uid_coeffs(), reserve_size(0)
+      |            ^~~~~~~~~~~~
+siever.h: In constructor ‘Siever::Siever(const SieverParams&, long unsigned int)’:
+siever.h:708:18: warning: ‘Siever::n’ will be initialized after [-Wreorder]
+  708 |     unsigned int n;                           // current context dimension, n = r - l
+      |                  ^
+siever.h:705:18: warning:   ‘unsigned int Siever::ll’ [-Wreorder]
+  705 |     unsigned int ll;
+      |                  ^~
+siever.h:522:14: warning:   when initialized here [-Wreorder]
+  522 |     explicit Siever(const SieverParams &params, unsigned long int seed = 0) :
+      |              ^~~~~~
+In file included from siever.h:1287:
+db.inl: In member function ‘bool Siever::verify_integrity(bool)’:
+db.inl:41:43: warning: unused parameter ‘test_bijection’ [-Wunused-parameter]
+   41 | inline bool Siever::verify_integrity(bool test_bijection)
+      |                                      ~~~~~^~~~~~~~~~~~~~
+g++ -fPIC -Ofast -march=native -ftree-vectorize -funroll-loops -std=c++11 -pthread -Wall -Wextra -DMAX_SIEVING_DIM=128 -DGPUVECNUM=65536 -DHAVE_CUDA -I../parallel-hashmap -lineinfo -I/usr/local/cuda/include -I../parallel-hashmap -c triple_sieve_mt.cpp -o triple_sieve_mt.o
+In file included from triple_sieve_mt.cpp:3:
+siever.h: In constructor ‘UidHashTable::UidHashTable()’:
+siever.h:254:18: warning: ‘UidHashTable::n’ will be initialized after [-Wreorder]
+  254 |     unsigned int n; // dimension of points in the domain of the hash function.
+      |                  ^
+siever.h:221:24: warning:   ‘std::vector<long unsigned int> UidHashTable::uid_coeffs’ [-Wreorder]
+  221 |   std::vector<UidType> uid_coeffs;        // description of the hash function.
+      |                        ^~~~~~~~~~
+siever.h:193:12: warning:   when initialized here [-Wreorder]
+  193 |   explicit UidHashTable() : db_uid(), n(0), uid_coeffs(), reserve_size(0)
+      |            ^~~~~~~~~~~~
+siever.h: In constructor ‘Siever::Siever(const SieverParams&, long unsigned int)’:
+siever.h:708:18: warning: ‘Siever::n’ will be initialized after [-Wreorder]
+  708 |     unsigned int n;                           // current context dimension, n = r - l
+      |                  ^
+siever.h:705:18: warning:   ‘unsigned int Siever::ll’ [-Wreorder]
+  705 |     unsigned int ll;
+      |                  ^~
+siever.h:522:14: warning:   when initialized here [-Wreorder]
+  522 |     explicit Siever(const SieverParams &params, unsigned long int seed = 0) :
+      |              ^~~~~~
+In file included from siever.h:1287:
+db.inl: In member function ‘bool Siever::verify_integrity(bool)’:
+db.inl:41:43: warning: unused parameter ‘test_bijection’ [-Wunused-parameter]
+   41 | inline bool Siever::verify_integrity(bool test_bijection)
+      |                                      ~~~~~^~~~~~~~~~~~~~
+triple_sieve_mt.cpp: In member function ‘std::size_t Siever::gauss_triple_mt_execute_delayed_insertion(TS_Transaction_DB_Type&, float&, unsigned int)’:
+triple_sieve_mt.cpp:1504:37: warning: type qualifiers ignored on cast result type [-Wignored-qualifiers]
+ 1504 |                 if(old_queue_left < static_cast<decltype(old_queue_left)> (insertion_size + TS_max_extra_queue_size))
+      |                                     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+triple_sieve_mt.cpp:1516:39: warning: comparison of integer expressions of different signedness: ‘const long int’ and ‘const std::size_t’ {aka ‘const long unsigned int’} [-Wsign-compare]
+ 1516 |                     if(old_queue_left > TS_max_extra_queue_size)
+      |                        ~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /usr/include/c++/16/cassert:46,
+                 from parallel_algorithms.hpp:34,
+                 from siever.inl:8,
+                 from siever.h:1285:
+triple_sieve_mt.cpp:1594:56: warning: comparison of integer expressions of different signedness: ‘long int’ and ‘std::size_t’ {aka ‘long unsigned int’} [-Wsign-compare]
+ 1594 |         assert(insertion_end_ptr - insertion_start_ptr == insertion_size);
+      |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~
+triple_sieve_mt.cpp:1624:30: warning: comparison of integer expressions of different signedness: ‘int’ and ‘long unsigned int’ [-Wsign-compare]
+ 1624 |             for(int t = 0; t < (sizeof(Entry) + 63) / 64; ++t)
+      |                            ~~^~~~~~~~~~~~~~~~~~~~~~~~~~~
+triple_sieve_mt.cpp: In member function ‘std::pair<Entry, long unsigned int> Siever::gauss_triple_mt_get_p(TS_CDB_Snapshot*&, unsigned int, TS_Transaction_DB_Type&, float&)’:
+triple_sieve_mt.cpp:1713:168: warning: unused parameter ‘update_len_bound’ [-Wunused-parameter]
+ 1713 | std::pair<Entry, size_t> Siever::gauss_triple_mt_get_p(TS_CDB_Snapshot * &thread_local_snapshot, unsigned int const id, TS_Transaction_DB_Type &transaction_db, float &update_len_bound)
+      |                                                                                                                                                                 ~~~~~~~^~~~~~~~~~~~~~~~
+triple_sieve_mt.cpp: In member function ‘void Siever::gauss_triple_mt_restore_cdb()’:
+triple_sieve_mt.cpp:1901:12: warning: type qualifiers ignored on cast result type [-Wignored-qualifiers]
+ 1901 |     assert(static_cast<mystd::make_unsigned_t<decltype(find_latest_snapshot)>> (find_latest_snapshot) < TS_snapshots_used);
+      |            ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/opt/cuda/bin/nvcc -ccbin g++ -Xcompiler -fPIC -Xcompiler -Ofast -Xcompiler -march=native -Xcompiler -pthread -Xcompiler -Wall -Xcompiler -Wextra -Xcompiler -DMAX_SIEVING_DIM=128 -Xcompiler -DGPUVECNUM=65536 -Xcompiler -DHAVE_CUDA -std=c++11 -O3 -gencode arch=compute_75,code=sm_75 -gencode arch=compute_75,code=compute_75 -lineinfo -I/usr/local/cuda/include -I../parallel-hashmap -c ../cuda/GPUStreamGeneral.cu -o ../cuda/GPUStreamGeneral.o
+../cuda/../kernel/siever.h(523): warning #68-D: integer conversion resulted in a change of sign
+          full_n(0), full_muT(), full_rr(), l(0), r(-1), n(0), ll(0), muT(), db(), cdb(),
+                                                    ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+../cuda/../kernel/siever.h(523): warning #68-D: integer conversion resulted in a change of sign
+          full_n(0), full_muT(), full_rr(), l(0), r(-1), n(0), ll(0), muT(), db(), cdb(),
+                                                    ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+../cuda/GPUStreamGeneral.cu(2834): warning #177-D: variable "b_size" was declared but never referenced
+                  const auto b_size = onlyprocess ? curr_bucket->size : prev_bucket->size;
+                             ^
+
+../cuda/GPUStreamGeneral.cu(1703): warning #177-D: variable "BL" was declared but never referenced
+      const uint32_t BL = 4;
+                     ^
+
+/usr/local/cuda/include/curand_normal_static.h: In function ‘float _curand_normal_icdf(unsigned int)’:
+/usr/local/cuda/include/curand_normal_static.h:60:72: warning: parameter ‘x’ set but not used [-Wunused-but-set-parameter=]
+   60 | QUALIFIERS_STATIC float _curand_normal_icdf(unsigned int x)
+      |                                                                        ^
+/usr/local/cuda/include/curand_normal_static.h: In function ‘float _curand_normal_icdf(long long unsigned int)’:
+/usr/local/cuda/include/curand_normal_static.h:78:82: warning: parameter ‘x’ set but not used [-Wunused-but-set-parameter=]
+   78 | QUALIFIERS_STATIC float _curand_normal_icdf(unsigned long long x)
+      |                                                               ~~~                ^
+/usr/local/cuda/include/curand_normal_static.h: In function ‘double _curand_normal_icdf_double(unsigned int)’:
+/usr/local/cuda/include/curand_normal_static.h:97:80: warning: parameter ‘x’ set but not used [-Wunused-but-set-parameter=]
+   97 | QUALIFIERS_STATIC double _curand_normal_icdf_double(unsigned int x)
+      |                                                                                ^
+/usr/local/cuda/include/curand_normal_static.h: In function ‘double _curand_normal_icdf_double(long long unsigned int)’:
+/usr/local/cuda/include/curand_normal_static.h:115:90: warning: parameter ‘x’ set but not used [-Wunused-but-set-parameter=]
+  115 | QUALIFIERS_STATIC double _curand_normal_icdf_double(unsigned long long x)
+      |                                                                       ~~~                ^
+../cuda/../kernel/db.inl: In member function ‘bool Siever::verify_integrity(bool)’:
+../cuda/../kernel/db.inl:41:43: warning: unused parameter ‘test_bijection’ [-Wunused-parameter]
+   41 | inline bool Siever::verify_integrity(bool test_bijection)
+      |                                      ~~~~~^~~~~~~~~~~~~~
+g++ -shared -pthread -L/home/pyjast1123/workspace/builds/g6k/kernel -Wl,-rpath=/home/pyjast1123/workspace/builds/g6k/kernel sieving.o control.o bgj1_sieve.o gpu_sieve.o triple_sieve.o params.o cpuperf.o triple_sieve_mt.o ../cuda/GPUStreamGeneral.o -o libG6K.so -lpthread -L/usr/local/cuda/lib64 -Wl,-rpath=/usr/local/cuda/lib64 -lcudart -L/usr/local/cuda/lib64/stubs -Wl,-rpath=/usr/local/cuda/lib64/stubs -lcuda -lcublas -lcurand
+make: Leaving directory '/home/pyjast1123/workspace/builds/g6k/kernel'
+In file included from g6k/siever_params.cpp:1205:
+g6k/../kernel/siever.h: In constructor ‘UidHashTable::UidHashTable()’:
+g6k/../kernel/siever.h:254:18: warning: ‘UidHashTable::n’ will be initialized after [-Wreorder]
+  254 |     unsigned int n; // dimension of points in the domain of the hash function.
+      |                  ^
+g6k/../kernel/siever.h:221:24: warning:   ‘std::vector<long unsigned int> UidHashTable::uid_coeffs’ [-Wreorder]
+  221 |   std::vector<UidType> uid_coeffs;        // description of the hash function.
+      |                        ^~~~~~~~~~
+g6k/../kernel/siever.h:193:12: warning:   when initialized here [-Wreorder]
+  193 |   explicit UidHashTable() : db_uid(), n(0), uid_coeffs(), reserve_size(0)
+      |            ^~~~~~~~~~~~
+g6k/../kernel/siever.h: In constructor ‘Siever::Siever(const SieverParams&, long unsigned int)’:
+g6k/../kernel/siever.h:708:18: warning: ‘Siever::n’ will be initialized after [-Wreorder]
+  708 |     unsigned int n;                           // current context dimension, n = r - l
+      |                  ^
+g6k/../kernel/siever.h:705:18: warning:   ‘unsigned int Siever::ll’ [-Wreorder]
+  705 |     unsigned int ll;
+      |                  ^~
+g6k/../kernel/siever.h:522:14: warning:   when initialized here [-Wreorder]
+  522 |     explicit Siever(const SieverParams &params, unsigned long int seed = 0) :
+      |              ^~~~~~
+In file included from g6k/siever.cpp:1213:
+g6k/../kernel/siever.h: In constructor ‘UidHashTable::UidHashTable()’:
+g6k/../kernel/siever.h:254:18: warning: ‘UidHashTable::n’ will be initialized after [-Wreorder]
+  254 |     unsigned int n; // dimension of points in the domain of the hash function.
+      |                  ^
+g6k/../kernel/siever.h:221:24: warning:   ‘std::vector<long unsigned int> UidHashTable::uid_coeffs’ [-Wreorder]
+  221 |   std::vector<UidType> uid_coeffs;        // description of the hash function.
+      |                        ^~~~~~~~~~
+g6k/../kernel/siever.h:193:12: warning:   when initialized here [-Wreorder]
+  193 |   explicit UidHashTable() : db_uid(), n(0), uid_coeffs(), reserve_size(0)
+      |            ^~~~~~~~~~~~
+In file included from g6k/../kernel/siever.h:1287:
+g6k/../kernel/db.inl: In member function ‘bool Siever::verify_integrity(bool)’:
+g6k/../kernel/db.inl:41:43: warning: unused parameter ‘test_bijection’ [-Wunused-parameter]
+   41 | inline bool Siever::verify_integrity(bool test_bijection)
+      |                                      ~~~~~^~~~~~~~~~~~~~
+g6k/../kernel/siever.h: In constructor ‘Siever::Siever(const SieverParams&, long unsigned int)’:
+g6k/../kernel/siever.h:708:18: warning: ‘Siever::n’ will be initialized after [-Wreorder]
+  708 |     unsigned int n;                           // current context dimension, n = r - l
+      |                  ^
+g6k/../kernel/siever.h:705:18: warning:   ‘unsigned int Siever::ll’ [-Wreorder]
+  705 |     unsigned int ll;
+      |                  ^~
+g6k/../kernel/siever.h:522:14: warning:   when initialized here [-Wreorder]
+  522 |     explicit Siever(const SieverParams &params, unsigned long int seed = 0) :
+      |              ^~~~~~
+In file included from g6k/../kernel/siever.h:1287:
+g6k/../kernel/db.inl: In member function ‘bool Siever::verify_integrity(bool)’:
+g6k/../kernel/db.inl:41:43: warning: unused parameter ‘test_bijection’ [-Wunused-parameter]
+   41 | inline bool Siever::verify_integrity(bool test_bijection)
+      |                                      ~~~~~^~~~~~~~~~~~~~
+c++: warning: $(EXTRAFLAGS): linker input file unused because linking not done
+c++: error: $(EXTRAFLAGS): linker input file not found: No such file or directory
+c++: warning: $(CUDA_FLAGS): linker input file unused because linking not done
+c++: error: $(CUDA_FLAGS): linker input file not found: No such file or directory
+g6k/siever.cpp: In function ‘PyObject* __pyx_pf_3g6k_6siever_6Siever_55shrink_left(__pyx_obj_3g6k_6siever_Siever*, PyObject*)’:
+g6k/siever.cpp:2521:17: warning: variable ‘__pyx_frame_code’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2521 |       PyObject *__pyx_frame_code = NULL;\
+      |                 ^~~~~~~~~~~~~~~~
+g6k/siever.cpp:43354:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+43354 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:2523:11: warning: variable ‘__pyx_exception_already_reported’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2523 |       int __pyx_exception_already_reported = 0;\
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:43354:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+43354 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp: In function ‘PyObject* __pyx_pf_3g6k_6siever_6Siever_53extend_left(__pyx_obj_3g6k_6siever_Siever*, PyObject*)’:
+g6k/siever.cpp:2521:17: warning: variable ‘__pyx_frame_code’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2521 |       PyObject *__pyx_frame_code = NULL;\
+      |                 ^~~~~~~~~~~~~~~~
+g6k/siever.cpp:43164:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+43164 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:2523:11: warning: variable ‘__pyx_exception_already_reported’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2523 |       int __pyx_exception_already_reported = 0;\
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:43164:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+43164 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp: In function ‘PyObject* __pyx_pf_3g6k_6siever_6Siever_69output_bench(__pyx_obj_3g6k_6siever_Siever*)’:
+g6k/siever.cpp:2521:17: warning: variable ‘__pyx_frame_code’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2521 |       PyObject *__pyx_frame_code = NULL;\
+      |                 ^~~~~~~~~~~~~~~~
+g6k/siever.cpp:47133:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+47133 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:2523:11: warning: variable ‘__pyx_exception_already_reported’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2523 |       int __pyx_exception_already_reported = 0;\
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:47133:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+47133 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp: In function ‘PyObject* __pyx_pf_3g6k_6siever_6Siever_57extend_right(__pyx_obj_3g6k_6siever_Siever*, PyObject*)’:
+g6k/siever.cpp:2521:17: warning: variable ‘__pyx_frame_code’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2521 |       PyObject *__pyx_frame_code = NULL;\
+      |                 ^~~~~~~~~~~~~~~~
+g6k/siever.cpp:43544:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+43544 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:2523:11: warning: variable ‘__pyx_exception_already_reported’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2523 |       int __pyx_exception_already_reported = 0;\
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:43544:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+43544 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:43547:13: warning: variable ‘__pyx_t_2’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+43547 |   PyObject *__pyx_t_2 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:43548:13: warning: variable ‘__pyx_t_3’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+43548 |   PyObject *__pyx_t_3 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:43550:13: warning: variable ‘__pyx_t_5’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+43550 |   PyObject *__pyx_t_5 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:43551:13: warning: variable ‘__pyx_t_6’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+43551 |   PyObject *__pyx_t_6 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:43552:13: warning: variable ‘__pyx_t_7’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+43552 |   PyObject *__pyx_t_7 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp: In function ‘PyObject* __pyx_pf_3g6k_6siever_6Siever_41gauss_triple_sieve_st(__pyx_obj_3g6k_6siever_Siever*, std::size_t, PyObject*)’:
+g6k/siever.cpp:37249:13: warning: variable ‘__pyx_r’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37249 |   PyObject *__pyx_r = NULL;
+      |             ^~~~~~~
+g6k/siever.cpp:2521:17: warning: variable ‘__pyx_frame_code’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2521 |       PyObject *__pyx_frame_code = NULL;\
+      |                 ^~~~~~~~~~~~~~~~
+g6k/siever.cpp:37250:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+37250 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:2523:11: warning: variable ‘__pyx_exception_already_reported’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2523 |       int __pyx_exception_already_reported = 0;\
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:37250:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+37250 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:37253:13: warning: variable ‘__pyx_t_2’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37253 |   PyObject *__pyx_t_2 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:37254:13: warning: variable ‘__pyx_t_3’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37254 |   PyObject *__pyx_t_3 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:37256:13: warning: variable ‘__pyx_t_5’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37256 |   PyObject *__pyx_t_5 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:37257:13: warning: variable ‘__pyx_t_6’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37257 |   PyObject *__pyx_t_6 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:37258:13: warning: variable ‘__pyx_t_7’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37258 |   PyObject *__pyx_t_7 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:37248:131: warning: argument ‘__pyx_v_max_db_size’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37248 | static PyObject *__pyx_pf_3g6k_6siever_6Siever_41gauss_triple_sieve_st(struct __pyx_obj_3g6k_6siever_Siever *__pyx_v_self, size_t __pyx_v_max_db_size, PyObject *__pyx_v_reset_stats) {
+      |                                                                                                                            ~~~~~~~^~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp: In function ‘PyObject* __pyx_pf_3g6k_6siever_6Siever_6initialize_local(__pyx_obj_3g6k_6siever_Siever*, PyObject*, PyObject*, PyObject*, PyObject*)’:
+g6k/siever.cpp:2521:17: warning: variable ‘__pyx_frame_code’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2521 |       PyObject *__pyx_frame_code = NULL;\
+      |                 ^~~~~~~~~~~~~~~~
+g6k/siever.cpp:23103:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+23103 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:2523:11: warning: variable ‘__pyx_exception_already_reported’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2523 |       int __pyx_exception_already_reported = 0;\
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:23103:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+23103 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:23106:13: warning: variable ‘__pyx_t_2’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+23106 |   PyObject *__pyx_t_2 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:23108:13: warning: variable ‘__pyx_t_4’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+23108 |   PyObject *__pyx_t_4 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:23109:13: warning: variable ‘__pyx_t_5’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+23109 |   PyObject *__pyx_t_5 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:23110:13: warning: variable ‘__pyx_t_6’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+23110 |   PyObject *__pyx_t_6 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:23111:13: warning: variable ‘__pyx_t_7’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+23111 |   PyObject *__pyx_t_7 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:23113:13: warning: variable ‘__pyx_t_9’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+23113 |   PyObject *__pyx_t_9 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp: In function ‘PyObject* __pyx_pf_3g6k_6siever_6Siever_45gauss_sieve(__pyx_obj_3g6k_6siever_Siever*, std::size_t, PyObject*)’:
+g6k/siever.cpp:38120:13: warning: variable ‘__pyx_r’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+38120 |   PyObject *__pyx_r = NULL;
+      |             ^~~~~~~
+g6k/siever.cpp:2521:17: warning: variable ‘__pyx_frame_code’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2521 |       PyObject *__pyx_frame_code = NULL;\
+      |                 ^~~~~~~~~~~~~~~~
+g6k/siever.cpp:38121:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+38121 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:2523:11: warning: variable ‘__pyx_exception_already_reported’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2523 |       int __pyx_exception_already_reported = 0;\
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:38121:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+38121 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:38124:13: warning: variable ‘__pyx_t_2’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+38124 |   PyObject *__pyx_t_2 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:38125:13: warning: variable ‘__pyx_t_3’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+38125 |   PyObject *__pyx_t_3 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:38127:13: warning: variable ‘__pyx_t_5’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+38127 |   PyObject *__pyx_t_5 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:38128:13: warning: variable ‘__pyx_t_6’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+38128 |   PyObject *__pyx_t_6 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:38129:13: warning: variable ‘__pyx_t_7’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+38129 |   PyObject *__pyx_t_7 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:38119:121: warning: argument ‘__pyx_v_max_db_size’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+38119 | static PyObject *__pyx_pf_3g6k_6siever_6Siever_45gauss_sieve(struct __pyx_obj_3g6k_6siever_Siever *__pyx_v_self, size_t __pyx_v_max_db_size, PyObject *__pyx_v_reset_stats) {
+      |                                                                                                                  ~~~~~~~^~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp: In function ‘PyObject* __pyx_pf_3g6k_6siever_6Siever_51statistics_lift_hash(__pyx_obj_3g6k_6siever_Siever*, unsigned int)’:
+g6k/siever.cpp:42644:18: warning: variable ‘__pyx_v_liftlen’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+42644 |   PyArrayObject *__pyx_v_liftlen = 0;
+      |                  ^~~~~~~~~~~~~~~
+g6k/siever.cpp:42645:18: warning: variable ‘__pyx_v_hashlen’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+42645 |   PyArrayObject *__pyx_v_hashlen = 0;
+      |                  ^~~~~~~~~~~~~~~
+g6k/siever.cpp:42646:13: warning: variable ‘__pyx_v_res’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+42646 |   PyObject *__pyx_v_res = NULL;
+      |             ^~~~~~~~~~~
+g6k/siever.cpp:42648:13: warning: variable ‘__pyx_r’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+42648 |   PyObject *__pyx_r = NULL;
+      |             ^~~~~~~
+g6k/siever.cpp:2521:17: warning: variable ‘__pyx_frame_code’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2521 |       PyObject *__pyx_frame_code = NULL;\
+      |                 ^~~~~~~~~~~~~~~~
+g6k/siever.cpp:42649:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+42649 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:2523:11: warning: variable ‘__pyx_exception_already_reported’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2523 |       int __pyx_exception_already_reported = 0;\
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:42649:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+42649 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:42652:13: warning: variable ‘__pyx_t_2’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+42652 |   PyObject *__pyx_t_2 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:42654:13: warning: variable ‘__pyx_t_4’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+42654 |   PyObject *__pyx_t_4 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:42656:16: warning: variable ‘__pyx_t_6’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+42656 |   unsigned int __pyx_t_6;
+      |                ^~~~~~~~~
+g6k/siever.cpp:42658:13: warning: variable ‘__pyx_t_8’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+42658 |   PyObject *__pyx_t_8 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:42643:136: warning: argument ‘__pyx_v_N’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+42643 | static PyObject *__pyx_pf_3g6k_6siever_6Siever_51statistics_lift_hash(struct __pyx_obj_3g6k_6siever_Siever *__pyx_v_self, unsigned int __pyx_v_N) {
+      |                                                                                                                           ~~~~~~~~~~~~~^~~~~~~~~
+g6k/siever.cpp: In function ‘PyObject* __pyx_pf_3g6k_6siever_6Siever_39gpu_sieve(__pyx_obj_3g6k_6siever_Siever*, PyObject*, PyObject*)’:
+g6k/siever.cpp:36762:13: warning: variable ‘__pyx_v_N’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+36762 |   PyObject *__pyx_v_N = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:2521:17: warning: variable ‘__pyx_frame_code’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2521 |       PyObject *__pyx_frame_code = NULL;\
+      |                 ^~~~~~~~~~~~~~~~
+g6k/siever.cpp:36764:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+36764 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:2523:11: warning: variable ‘__pyx_exception_already_reported’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2523 |       int __pyx_exception_already_reported = 0;\
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:36764:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+36764 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:36767:13: warning: variable ‘__pyx_t_2’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+36767 |   PyObject *__pyx_t_2 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:36768:13: warning: variable ‘__pyx_t_3’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+36768 |   PyObject *__pyx_t_3 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:36770:13: warning: variable ‘__pyx_t_5’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+36770 |   PyObject *__pyx_t_5 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:36771:13: warning: variable ‘__pyx_t_6’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+36771 |   PyObject *__pyx_t_6 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp: In function ‘PyObject* __pyx_pf_3g6k_6siever_6Siever_4update_gso(__pyx_obj_3g6k_6siever_Siever*, int, int)’:
+g6k/siever.cpp:22013:18: warning: variable ‘__pyx_v__mu’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+22013 |   PyArrayObject *__pyx_v__mu = 0;
+      |                  ^~~~~~~~~~~
+g6k/siever.cpp:22015:18: warning: variable ‘__pyx_v__rr’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+22015 |   PyArrayObject *__pyx_v__rr = 0;
+      |                  ^~~~~~~~~~~
+g6k/siever.cpp:22016:18: warning: variable ‘__pyx_v__muinv’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+22016 |   PyArrayObject *__pyx_v__muinv = 0;
+      |                  ^~~~~~~~~~~~~~
+g6k/siever.cpp:2521:17: warning: variable ‘__pyx_frame_code’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2521 |       PyObject *__pyx_frame_code = NULL;\
+      |                 ^~~~~~~~~~~~~~~~
+g6k/siever.cpp:22019:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+22019 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:2523:11: warning: variable ‘__pyx_exception_already_reported’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2523 |       int __pyx_exception_already_reported = 0;\
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:22019:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+22019 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:22025:13: warning: variable ‘__pyx_t_5’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+22025 |   PyObject *__pyx_t_5 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:22026:13: warning: variable ‘__pyx_t_6’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+22026 |   PyObject *__pyx_t_6 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:22027:13: warning: variable ‘__pyx_t_7’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+22027 |   PyObject *__pyx_t_7 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:22028:13: warning: variable ‘__pyx_t_8’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+22028 |   PyObject *__pyx_t_8 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:22041:13: warning: variable ‘__pyx_t_21’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+22041 |   PyObject *__pyx_t_21 = NULL;
+      |             ^~~~~~~~~~
+g6k/siever.cpp: In function ‘PyObject* __pyx_pf_3g6k_6siever_6Siever_35bgj1_sieve(__pyx_obj_3g6k_6siever_Siever*, PyObject*)’:
+g6k/siever.cpp:35883:13: warning: variable ‘__pyx_v_N’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+35883 |   PyObject *__pyx_v_N = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:35884:13: warning: variable ‘__pyx_v_B’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+35884 |   PyObject *__pyx_v_B = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:35885:13: warning: variable ‘__pyx_v_y’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+35885 |   PyObject *__pyx_v_y = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:35886:13: warning: variable ‘__pyx_v_x’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+35886 |   PyObject *__pyx_v_x = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:35887:13: warning: variable ‘__pyx_v_alpha’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+35887 |   PyObject *__pyx_v_alpha = NULL;
+      |             ^~~~~~~~~~~~~
+g6k/siever.cpp:35888:13: warning: variable ‘__pyx_r’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+35888 |   PyObject *__pyx_r = NULL;
+      |             ^~~~~~~
+g6k/siever.cpp:2521:17: warning: variable ‘__pyx_frame_code’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2521 |       PyObject *__pyx_frame_code = NULL;\
+      |                 ^~~~~~~~~~~~~~~~
+g6k/siever.cpp:35889:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+35889 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:2523:11: warning: variable ‘__pyx_exception_already_reported’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2523 |       int __pyx_exception_already_reported = 0;\
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:35889:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+35889 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:35892:13: warning: variable ‘__pyx_t_2’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+35892 |   PyObject *__pyx_t_2 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:35893:13: warning: variable ‘__pyx_t_3’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+35893 |   PyObject *__pyx_t_3 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:35894:13: warning: variable ‘__pyx_t_4’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+35894 |   PyObject *__pyx_t_4 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:35895:13: warning: variable ‘__pyx_t_5’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+35895 |   PyObject *__pyx_t_5 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:35897:13: warning: variable ‘__pyx_t_7’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+35897 |   PyObject *__pyx_t_7 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp: In function ‘PyObject* __pyx_pf_3g6k_6siever_6Siever_37nv_sieve(__pyx_obj_3g6k_6siever_Siever*, PyObject*)’:
+g6k/siever.cpp:36379:13: warning: variable ‘__pyx_v_N’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+36379 |   PyObject *__pyx_v_N = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:2521:17: warning: variable ‘__pyx_frame_code’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2521 |       PyObject *__pyx_frame_code = NULL;\
+      |                 ^~~~~~~~~~~~~~~~
+g6k/siever.cpp:36381:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+36381 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:2523:11: warning: variable ‘__pyx_exception_already_reported’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2523 |       int __pyx_exception_already_reported = 0;\
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:36381:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+36381 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:36384:13: warning: variable ‘__pyx_t_2’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+36384 |   PyObject *__pyx_t_2 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:36385:13: warning: variable ‘__pyx_t_3’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+36385 |   PyObject *__pyx_t_3 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:36386:13: warning: variable ‘__pyx_t_4’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+36386 |   PyObject *__pyx_t_4 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:36387:13: warning: variable ‘__pyx_t_5’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+36387 |   PyObject *__pyx_t_5 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp: In function ‘PyObject* __pyx_pf_3g6k_6siever_6Siever_43gauss_triple_mt(__pyx_obj_3g6k_6siever_Siever*, std::size_t, PyObject*)’:
+g6k/siever.cpp:37582:13: warning: variable ‘__pyx_v_B’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37582 |   PyObject *__pyx_v_B = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:37583:13: warning: variable ‘__pyx_v_y’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37583 |   PyObject *__pyx_v_y = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:37584:13: warning: variable ‘__pyx_v_x’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37584 |   PyObject *__pyx_v_x = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:37585:13: warning: variable ‘__pyx_v_alpha’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37585 |   PyObject *__pyx_v_alpha = NULL;
+      |             ^~~~~~~~~~~~~
+g6k/siever.cpp:37586:13: warning: variable ‘__pyx_r’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37586 |   PyObject *__pyx_r = NULL;
+      |             ^~~~~~~
+g6k/siever.cpp:2521:17: warning: variable ‘__pyx_frame_code’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2521 |       PyObject *__pyx_frame_code = NULL;\
+      |                 ^~~~~~~~~~~~~~~~
+g6k/siever.cpp:37587:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+37587 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:2523:11: warning: variable ‘__pyx_exception_already_reported’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2523 |       int __pyx_exception_already_reported = 0;\
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:37587:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+37587 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:37590:13: warning: variable ‘__pyx_t_2’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37590 |   PyObject *__pyx_t_2 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:37591:13: warning: variable ‘__pyx_t_3’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37591 |   PyObject *__pyx_t_3 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:37592:13: warning: variable ‘__pyx_t_4’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37592 |   PyObject *__pyx_t_4 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:37593:13: warning: variable ‘__pyx_t_5’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37593 |   PyObject *__pyx_t_5 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:37595:13: warning: variable ‘__pyx_t_7’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+37595 |   PyObject *__pyx_t_7 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp: In function ‘PyObject* __pyx_pf_3g6k_6siever_6Siever_59insert(__pyx_obj_3g6k_6siever_Siever*, PyObject*, PyObject*)’:
+g6k/siever.cpp:43808:13: warning: variable ‘__pyx_v_i’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+43808 |   PyObject *__pyx_v_i = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:43809:13: warning: variable ‘__pyx_v_new_l’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+43809 |   PyObject *__pyx_v_new_l = NULL;
+      |             ^~~~~~~~~~~~~
+g6k/siever.cpp:43810:13: warning: variable ‘__pyx_v_new_n’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+43810 |   PyObject *__pyx_v_new_n = NULL;
+      |             ^~~~~~~~~~~~~
+g6k/siever.cpp:43811:18: warning: variable ‘__pyx_v_T’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+43811 |   PyArrayObject *__pyx_v_T = 0;
+      |                  ^~~~~~~~~
+g6k/siever.cpp:43812:13: warning: variable ‘__pyx_v_j’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+43812 |   PyObject *__pyx_v_j = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:2521:17: warning: variable ‘__pyx_frame_code’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2521 |       PyObject *__pyx_frame_code = NULL;\
+      |                 ^~~~~~~~~~~~~~~~
+g6k/siever.cpp:43814:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+43814 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:2523:11: warning: variable ‘__pyx_exception_already_reported’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2523 |       int __pyx_exception_already_reported = 0;\
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:43814:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+43814 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:43822:13: warning: variable ‘__pyx_t_7’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+43822 |   PyObject *__pyx_t_7 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:43832:13: warning: variable ‘__pyx_t_17’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+43832 |   PyObject *__pyx_t_17 = NULL;
+      |             ^~~~~~~~~~
+g6k/siever.cpp:43805:144: warning: argument ‘__pyx_v_v’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+43805 | static PyObject *__pyx_pf_3g6k_6siever_6Siever_59insert(struct __pyx_obj_3g6k_6siever_Siever *__pyx_v_self, PyObject *__pyx_v_kappa, PyObject *__pyx_v_v) {
+      |                                                                                                                                      ~~~~~~~~~~^~~~~~~~~
+g6k/siever.cpp: In function ‘PyObject* __pyx_pf_3g6k_6siever_6Siever_49reset_dual_vecs(__pyx_obj_3g6k_6siever_Siever*, PyObject*)’:
+g6k/siever.cpp:40134:13: warning: variable ‘__pyx_v_dual_hash_dim’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40134 |   PyObject *__pyx_v_dual_hash_dim = NULL;
+      |             ^~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:40136:13: warning: variable ‘__pyx_v_dual_hash_d4f’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40136 |   PyObject *__pyx_v_dual_hash_d4f = NULL;
+      |             ^~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:40137:13: warning: variable ‘__pyx_v_k’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40137 |   PyObject *__pyx_v_k = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:40138:18: warning: variable ‘__pyx_v_dual_vecs’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40138 |   PyArrayObject *__pyx_v_dual_vecs = 0;
+      |                  ^~~~~~~~~~~~~~~~~
+g6k/siever.cpp:40139:13: warning: variable ‘__pyx_v_hash_start’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40139 |   PyObject *__pyx_v_hash_start = NULL;
+      |             ^~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:40140:13: warning: variable ‘__pyx_v_mu’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40140 |   PyObject *__pyx_v_mu = NULL;
+      |             ^~~~~~~~~~
+g6k/siever.cpp:40142:13: warning: variable ‘__pyx_v_j’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40142 |   PyObject *__pyx_v_j = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:40143:13: warning: variable ‘__pyx_v_muinv’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40143 |   PyObject *__pyx_v_muinv = NULL;
+      |             ^~~~~~~~~~~~~
+g6k/siever.cpp:40144:13: warning: variable ‘__pyx_v_E’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40144 |   PyObject *__pyx_v_E = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:40145:13: warning: variable ‘__pyx_v_dual_vecs_x’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40145 |   PyObject *__pyx_v_dual_vecs_x = NULL;
+      |             ^~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:40146:13: warning: variable ‘__pyx_v_dual_vecs_yr’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40146 |   PyObject *__pyx_v_dual_vecs_yr = NULL;
+      |             ^~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:40148:13: warning: variable ‘__pyx_v_sub’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40148 |   PyObject *__pyx_v_sub = NULL;
+      |             ^~~~~~~~~~~
+g6k/siever.cpp:40149:13: warning: variable ‘__pyx_v_g’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40149 |   PyObject *__pyx_v_g = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:40150:13: warning: variable ‘__pyx_v_cnd’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40150 |   PyObject *__pyx_v_cnd = NULL;
+      |             ^~~~~~~~~~~
+g6k/siever.cpp:40151:13: warning: variable ‘__pyx_v_bestj’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40151 |   PyObject *__pyx_v_bestj = NULL;
+      |             ^~~~~~~~~~~~~
+g6k/siever.cpp:40152:13: warning: variable ‘__pyx_v_tmp’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40152 |   PyObject *__pyx_v_tmp = NULL;
+      |             ^~~~~~~~~~~
+g6k/siever.cpp:40153:13: warning: variable ‘__pyx_v_gram’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40153 |   PyObject *__pyx_v_gram = NULL;
+      |             ^~~~~~~~~~~~
+g6k/siever.cpp:40154:13: warning: variable ‘__pyx_v_cnd2’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40154 |   PyObject *__pyx_v_cnd2 = NULL;
+      |             ^~~~~~~~~~~~
+g6k/siever.cpp:40155:13: warning: variable ‘__pyx_v_gh_target’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40155 |   PyObject *__pyx_v_gh_target = NULL;
+      |             ^~~~~~~~~~~~~~~~~
+g6k/siever.cpp:40156:13: warning: variable ‘__pyx_v_gh_right’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40156 |   PyObject *__pyx_v_gh_right = NULL;
+      |             ^~~~~~~~~~~~~~~~
+g6k/siever.cpp:40157:13: warning: variable ‘__pyx_v_gh_left’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40157 |   PyObject *__pyx_v_gh_left = NULL;
+      |             ^~~~~~~~~~~~~~~
+g6k/siever.cpp:40158:13: warning: variable ‘__pyx_v_length_bound’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40158 |   PyObject *__pyx_v_length_bound = NULL;
+      |             ^~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:40159:13: warning: variable ‘__pyx_v_conv_ratio’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40159 |   PyObject *__pyx_v_conv_ratio = NULL;
+      |             ^~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:40161:13: warning: variable ‘__pyx_r’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40161 |   PyObject *__pyx_r = NULL;
+      |             ^~~~~~~
+g6k/siever.cpp:2521:17: warning: variable ‘__pyx_frame_code’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2521 |       PyObject *__pyx_frame_code = NULL;\
+      |                 ^~~~~~~~~~~~~~~~
+g6k/siever.cpp:40162:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+40162 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:2523:11: warning: variable ‘__pyx_exception_already_reported’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+ 2523 |       int __pyx_exception_already_reported = 0;\
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:40162:3: note: in expansion of macro ‘__Pyx_TraceDeclarationsFunc’
+40162 |   __Pyx_TraceDeclarationsFunc
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+g6k/siever.cpp:40165:13: warning: variable ‘__pyx_t_2’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40165 |   PyObject *__pyx_t_2 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:40167:13: warning: variable ‘__pyx_t_4’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40167 |   PyObject *__pyx_t_4 = NULL;
+      |             ^~~~~~~~~
+g6k/siever.cpp:40177:13: warning: variable ‘__pyx_t_14’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40177 |   PyObject *__pyx_t_14 = NULL;
+      |             ^~~~~~~~~~
+g6k/siever.cpp:40179:13: warning: variable ‘__pyx_t_16’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40179 |   PyObject *__pyx_t_16 = NULL;
+      |             ^~~~~~~~~~
+g6k/siever.cpp:40181:13: warning: variable ‘__pyx_t_18’ might be clobbered by ‘longjmp’ or ‘vfork’ [-Wclobbered]
+40181 |   PyObject *__pyx_t_18 = NULL;
+      |             ^~~~~~~~~~
+c++: warning: $(EXTRAFLAGS): linker input file unused because linking not done
+c++: error: $(EXTRAFLAGS): linker input file not found: No such file or directory
+c++: warning: $(CUDA_FLAGS): linker input file unused because linking not done
+c++: error: $(CUDA_FLAGS): linker input file not found: No such file or directory
+error: command '/usr/bin/c++' failed with exit code 1
