@@ -329,13 +329,15 @@ namespace py = pybind11;
 typedef ZZ_mat<mpz_t> MyMatrix;
 
 static const double LOG2 = 0.69314718055994530942;
-static const int SIEVE_THRESHOLD = 40;     // < : enumeration, >= : GPU sieve (legacy ORACLE)
-static const int SIEVE_MAX_N     = 4096;
-static const int SAFE_BKZ_MAX = 28;   // FT_DOUBLE 枚举安全上限，超过必段错误
+static const int SIEVE_THRESHOLD = 40;
+static const int SIEVE_MAX_N = 4096;
+static const int SAFE_BKZ_MAX = 28;
+
 // ==================== matrix pool ====================
 static std::unordered_map<int64_t, MyMatrix> g_pool;
 static int64_t g_next_id = 1;
 static std::mutex g_pool_mutex;
+
 // ==================== parsing / dump ====================
 static MyMatrix parse_matrix_core(const std::string& s) {
     MyMatrix B;
@@ -350,26 +352,28 @@ static std::string dump_matrix_core(const MyMatrix& B) {
     return os.str();
 }
 
+// ==================== runtime CUDA switch ====================
 static inline bool use_cuda_runtime() {
     static int cached = -1;
 
     if (cached < 0) {
-        const char* e = std::getenv("LATTICE_DISABLE_CUDA");
+        const char* env = std::getenv("LATTICE_DISABLE_CUDA");
 
         cached = (
-            e &&
+            env &&
             (
-                e[0] == '1' ||
-                e[0] == 't' ||
-                e[0] == 'T'
+                env[0] == '1' ||
+                env[0] == 't' ||
+                env[0] == 'T'
             )
         ) ? 0 : 1;
     }
 
     return cached == 1;
 }
-// ==================== BKZ strategies（替换原 default_strategies）====================
-static const int MAX_BKZ_BLOCK = 128;      // 后端支持的 blocksize 硬上限
+
+// ==================== BKZ strategies ====================
+static const int MAX_BKZ_BLOCK = 128;     // 后端支持的 blocksize 硬上限
 static bool g_strat_from_json = false;
 static std::string g_strat_path;
 
