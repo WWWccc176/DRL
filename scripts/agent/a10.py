@@ -55,10 +55,20 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 import multiprocessing as mp
 
-import my_project_backend
+# my_project_backend.so 位于项目根目录。
+# 必须在导入 backend 之前把项目根目录加入 sys.path。
+_PROJECT_ROOT_BOOT = os.environ.get(
+    "DRL_ROOT",
+    "/home/amax/projects/DRL",
+)
 
+if _PROJECT_ROOT_BOOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT_BOOT)
+
+import my_project_backend
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -92,7 +102,7 @@ NUM_GLOBALS = 7
 LLL_FREQ = 3
 SAFE_BKZ_MAX = 28
 # --- 路径（显式写死，允许环境变量覆盖）---
-PROJECT_ROOT = os.environ.get("DRL_ROOT", "/home/amax/projects/DRL")
+PROJECT_ROOT = _PROJECT_ROOT_BOOT
 G6K_ROOT = os.environ.get("G6K_ROOT", "/home/amax/workspace/builds/g6k")
 G6K_HELPER_DIR = os.environ.get("A10_G6K_HELPERS", "")
 
