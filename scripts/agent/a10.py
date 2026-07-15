@@ -1068,7 +1068,9 @@ class LatticeEnv:
             my_project_backend.reduce(
                 self.current_pool_id, "LOCAL_BKZ", min(self.dim, SAFE_BKZ_MAX), 0
             )  # ← 不再 40
-        self.last_info = my_project_backend.reduce(self.current_pool_id, "LLL", 2, 0)
+            self.last_info = my_project_backend.reduce(
+                self.current_pool_id, "LLL", 2, 0
+            )
         old_best, old_ep_best = self.best_ratio, self.current_ep_best_ratio
         state, new_logb1, new_ratio, new_maxcos, _, new_logdef = self._build_state(
             self.last_info
