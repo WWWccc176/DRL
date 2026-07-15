@@ -100,7 +100,7 @@ BETA_REF = 60.0
 DIM_REF = 60.0
 NUM_GLOBALS = 7
 LLL_FREQ = 3
-SAFE_BKZ_MAX = 28
+FINAL_POLISH_BETA = 45
 # --- 路径（显式写死，允许环境变量覆盖）---
 PROJECT_ROOT = _PROJECT_ROOT_BOOT
 G6K_ROOT = os.environ.get("G6K_ROOT", "/home/amax/workspace/builds/g6k")
@@ -991,6 +991,13 @@ class LatticeEnv:
                 self.best_vector, self.best_basis = mat[0], mat
             self.best_dirty = True
 
+    def _leading_gs(self, mid, pos):
+        """块首 GS log-norm。块行列式在幺模变换下不变，故 gs[pos] 变小 <=> 该 block
+        的首向量真的更短，用来判定 sieve 是否带来改进。"""
+        ev = my_project_backend.evaluate_matrix(mid)
+        gs = ev["gs_log_norms"]
+        return float(gs[min(pos, len(gs) - 1)])
+
     def pop_best_update(self):
         """随 step 的 info 回传主进程；主通道因此不必再发 get_best（避免协议错序）。
         结果文件只用 vector，不传完整 basis 省带宽。"""
@@ -1002,20 +1009,37 @@ class LatticeEnv:
         return payload
 
     # ---- 三档动作执行：LOCAL_BKZ / ENUM / GPU sieve（回退 ENUM）----
+    # ---- 三档动作执行：LOCAL_BKZ / ENUM / GPU sieve（失败或无改进 -> 同 beta ENUM）----
     def _exec_action(self, beta, pos):
         mid = self.current_pool_id
+
+        # 档1：beta<30 -> LOCAL_BKZ
         if beta < ENUM_MIN_BETA:
             return my_project_backend.reduce(mid, "LOCAL_BKZ", beta, pos)
+
+        # 档2：30<=beta<40（或无 sieve）-> 同 beta 枚举
         if beta < SIEVE_MIN_BETA or self.sieve is None:
             try:
                 return my_project_backend.reduce(mid, "ORACLE_ENUM_BLOCK", beta, pos)
             except Exception:
                 return my_project_backend.reduce(mid, "LOCAL_BKZ", beta, pos)
 
-        # GPU sieve：dump 原始块行（不做 LLL —— coeffs 必须相对原始行）
-        rows = parse_fplll(my_project_backend.dump_block(mid, pos, beta))
+        # 档3：beta>=40 -> GPU sieve；miss / insert 失败 / 无改进 都回退到【同维度枚举】
+        def _enum_same_beta(tag):
+            # 关键：不再降到 SAFE_BKZ_MAX 的 BKZ，改为同 beta 的 ORACLE_ENUM_BLOCK
+            try:
+                return my_project_backend.reduce(mid, "ORACLE_ENUM_BLOCK", beta, pos)
+            except Exception as exc:
+                print(
+                    f"[env{self.env_id}] ENUM fallback failed ({tag}): dim={self.dim}, "
+                    f"beta={beta}, pos={pos}: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return my_project_backend.reduce(mid, "LOCAL_BKZ", beta, pos)
 
-        # 后端契约校验：块必须恰好 beta 行。不符即后端 bug，直接抛出让 env 显式崩溃并打印。
+        # dump 原始块行（不做 LLL —— coeffs 必须相对原始行）
+        rows = parse_fplll(my_project_backend.dump_block(mid, pos, beta))
         if len(rows) != beta:
             raise RuntimeError(
                 f"dump_block row count mismatch: env={self.env_id}, dim={self.dim}, "
@@ -1028,31 +1052,45 @@ class LatticeEnv:
             and len(coeffs) == beta
             and any(int(c) != 0 for c in coeffs)
         )
+
+        # (A) sieve miss -> 同 beta 枚举
         if not coeffs_valid:
             print(
-                f"[env{self.env_id}] sieve miss -> capped LOCAL_BKZ: "
-                f"dim={self.dim}, beta={beta}, pos={pos}",
+                f"[env{self.env_id}] sieve miss -> ENUM(beta={beta}): "
+                f"dim={self.dim}, pos={pos}",
                 flush=True,
             )
-            return my_project_backend.reduce(
-                mid, "LOCAL_BKZ", min(beta, SAFE_BKZ_MAX), pos
-            )
+            return _enum_same_beta("miss")
+
+        # sieve 命中：插入前记录块首 GS
+        gs_before = self._leading_gs(mid, pos)
         try:
             my_project_backend.insert_coeff_vector(
                 mid, pos, beta, [str(int(c)) for c in coeffs]
             )
         except Exception as exc:
             print(
-                f"[env{self.env_id}] insert_coeff_vector failed: dim={self.dim}, "
-                f"beta={beta}, pos={pos}: {exc}",
+                f"[env{self.env_id}] insert_coeff_vector failed -> ENUM(beta={beta}): "
+                f"dim={self.dim}, pos={pos}: {exc}",
                 file=sys.stderr,
                 flush=True,
             )
-            return my_project_backend.reduce(
-                mid, "LOCAL_BKZ", min(beta, SAFE_BKZ_MAX), pos
-            )
+            return _enum_same_beta("insert_fail")
+
         # 插入后必须 LLL 恢复 GS
-        return my_project_backend.reduce(mid, "LLL", 2, 0)
+        act_info = my_project_backend.reduce(mid, "LLL", 2, 0)
+        gs_after = self._leading_gs(mid, pos)
+
+        # (B) sieve 没有缩短 block -> 再用同 beta 枚举来一次
+        if gs_after >= gs_before - 1e-9:
+            print(
+                f"[env{self.env_id}] sieve no-gain (Δgs={gs_after - gs_before:+.3e}) "
+                f"-> ENUM(beta={beta}): dim={self.dim}, pos={pos}",
+                flush=True,
+            )
+            return _enum_same_beta("no_gain")
+
+        return act_info
 
     def step(self, action_idx):
         beta, pos = self.action_list[action_idx]
@@ -1076,9 +1114,9 @@ class LatticeEnv:
         self.current_step += 1
         done = self.current_step >= self.max_steps
         if done:
-            my_project_backend.reduce(
-                self.current_pool_id, "LOCAL_BKZ", min(self.dim, SAFE_BKZ_MAX), 0
-            )  # ← 不再 40
+            # episode 末尾抛光：beta=min(dim,45) 的 GPU sieve（miss / 无改进自动回退同
+            # beta ENUM），随后 LLL 梳理。复用 _exec_action 的 sieve->enum 回退，不再降维 BKZ。
+            self._exec_action(min(self.dim, FINAL_POLISH_BETA), 0)
             self.last_info = my_project_backend.reduce(
                 self.current_pool_id, "LLL", 2, 0
             )
