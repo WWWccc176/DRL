@@ -331,7 +331,7 @@ typedef ZZ_mat<mpz_t> MyMatrix;
 static const double LOG2 = 0.69314718055994530942;
 static const int SIEVE_THRESHOLD = 40;     // < : enumeration, >= : GPU sieve (legacy ORACLE)
 static const int SIEVE_MAX_N     = 4096;
-
+static const int SAFE_BKZ_MAX = 28;   // FT_DOUBLE 枚举安全上限，超过必段错误
 // ==================== matrix pool ====================
 static std::unordered_map<int64_t, MyMatrix> g_pool;
 static int64_t g_next_id = 1;
@@ -550,23 +550,23 @@ static bool enum_block_process(MyMatrix& Bb, int d, int cols, int beta) {
     lll_reduction(Bb, 0.99);
     if (d < 2) return true;
     std::vector<double> gs_b; block_gso(Bb, gs_b);
+    for (double g : gs_b) if (!std::isfinite(g)) return false;   // 秩亏/精度坏 -> 不枚举
     double pot_before = block_logpot(gs_b);
 
     MyMatrix snap(d, cols);
     for (int i=0;i<d;++i) for (int j=0;j<cols;++j) snap[i][j]=Bb[i][j];
 
-    int bs = std::min(d, std::max(2, beta));
+    int bs = std::min({d, std::max(2, beta), SAFE_BKZ_MAX});      // ← 硬封顶
     BKZParam par(bs, default_strategies());
-    par.flags = BKZ_GH_BND;                    // strong local processing, no early abort
-    par.max_loops = std::min(d, 12);
-    try { bkz_reduction(&Bb, NULL, par); } catch(...) {}
+    par.flags = BKZ_AUTO_ABORT | BKZ_GH_BND;                      // ← 加 AUTO_ABORT
+    par.gh_factor = 1.05;
+    par.max_loops = std::min(d, 8);
+    try { bkz_reduction(&Bb, NULL, par, FT_DOUBLE, 0); } catch(...) {}
     lll_reduction(Bb, 0.99);
-
     std::vector<double> gs_a; block_gso(Bb, gs_a);
     double pot_after = block_logpot(gs_a);
-
-    if (pot_after <= pot_before + 1e-9) return true;       // improved/equal -> keep
-    for (int i=0;i<d;++i) for (int j=0;j<cols;++j) Bb[i][j]=snap[i][j];  // revert
+    if (pot_after <= pot_before + 1e-9) return true;
+    for (int i=0;i<d;++i) for (int j=0;j<cols;++j) Bb[i][j]=snap[i][j];
     return false;
 }
 
@@ -636,7 +636,7 @@ static void do_reduction(int64_t mid, MyMatrix& B, const std::string& method,
         for (int i=0;i<actual_beta;++i) for(int j=0;j<cols;++j) L[i][j]=B[pos+i][j];
         lll_reduction(L, 0.99);
         if (actual_beta>=4){
-            int ib=std::min(actual_beta,100);
+            int ib=std::min(actual_beta,SAFE_BKZ_MAX);
             BKZParam par(ib, default_strategies());   // now BKZ2.0 w/ strategies
             par.flags=BKZ_AUTO_ABORT|BKZ_GH_BND;
             if (ib<=20){par.gh_factor=1.1;par.max_loops=4;}

@@ -90,7 +90,7 @@ BETA_REF = 60.0
 DIM_REF = 60.0
 NUM_GLOBALS = 7
 LLL_FREQ = 3
-
+SAFE_BKZ_MAX = 28
 # --- 路径（显式写死，允许环境变量覆盖）---
 PROJECT_ROOT = os.environ.get("DRL_ROOT", "/home/amax/projects/DRL")
 G6K_ROOT = os.environ.get("G6K_ROOT", "/home/amax/workspace/builds/g6k")
@@ -1018,20 +1018,15 @@ class LatticeEnv:
             and len(coeffs) == beta
             and any(int(c) != 0 for c in coeffs)
         )
-        if (
-            not coeffs_valid
-        ):  # sieve 失败/超时/非法 -> ENUM，绝不静默跳过、绝不插非法系数
+        if not coeffs_valid:
             print(
-                f"[env{self.env_id}] invalid/empty sieve result: dim={self.dim}, "
-                f"beta={beta}, pos={pos}, "
-                f"coeff_len={None if coeffs is None else len(coeffs)}",
+                f"[env{self.env_id}] sieve miss -> capped LOCAL_BKZ: "
+                f"dim={self.dim}, beta={beta}, pos={pos}",
                 flush=True,
             )
-            try:
-                return my_project_backend.reduce(mid, "ORACLE_ENUM_BLOCK", beta, pos)
-            except Exception:
-                return my_project_backend.reduce(mid, "LOCAL_BKZ", beta, pos)
-
+            return my_project_backend.reduce(
+                mid, "LOCAL_BKZ", min(beta, SAFE_BKZ_MAX), pos
+            )
         try:
             my_project_backend.insert_coeff_vector(
                 mid, pos, beta, [str(int(c)) for c in coeffs]
@@ -1071,12 +1066,9 @@ class LatticeEnv:
         done = self.current_step >= self.max_steps
         if done:
             my_project_backend.reduce(
-                self.current_pool_id, "LOCAL_BKZ", min(self.dim, 40), 0
-            )
-            self.last_info = my_project_backend.reduce(
-                self.current_pool_id, "LLL", 2, 0
-            )
-
+                self.current_pool_id, "LOCAL_BKZ", min(self.dim, SAFE_BKZ_MAX), 0
+            )  # ← 不再 40
+        self.last_info = my_project_backend.reduce(self.current_pool_id, "LLL", 2, 0)
         old_best, old_ep_best = self.best_ratio, self.current_ep_best_ratio
         state, new_logb1, new_ratio, new_maxcos, _, new_logdef = self._build_state(
             self.last_info
