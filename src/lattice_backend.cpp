@@ -337,38 +337,54 @@ static std::unordered_map<int64_t, MyMatrix> g_pool;
 static int64_t g_next_id = 1;
 static std::mutex g_pool_mutex;
 
-// ---- 1-(1): load the real BKZ2.0 strategies (FPLLL_DEFAULT_STRATEGY) ----
+// ==================== BKZ strategies（替换原 default_strategies）====================
+static const int MAX_BKZ_BLOCK = 128;      // 后端支持的 blocksize 硬上限
+static bool g_strat_from_json = false;
+static std::string g_strat_path;
+
 static std::vector<Strategy>& default_strategies() {
     static std::vector<Strategy> strat;
-    static bool loaded = false;
-    if (!loaded) {
-        loaded = true;
-        try {
-            std::string path = strategy_full_path("default.json");
-            if (!path.empty()) strat = load_strategies_json(path);
-        } catch (...) { strat.clear(); }
-    }
-    return strat;   // empty => fplll falls back to full enum; non-empty => BKZ2.0 pruning
+    static std::once_flag once;
+    std::call_once(once, [](){
+        // 1) 环境变量优先（fplll 只认编译期烤死的路径，路径失效时可用它救场）
+        const char* envp = std::getenv("FPLLL_STRATEGIES_JSON");
+        if (envp && *envp) {
+            try { strat = load_strategies_json(envp); g_strat_path = envp; }
+            catch (...) { strat.clear(); }
+        }
+        // 2) 回退 fplll 默认路径
+        if (strat.empty()) {
+            try {
+                std::string p = strategy_full_path("default.json");
+                if (!p.empty()) { strat = load_strategies_json(p); g_strat_path = p; }
+            } catch (...) { strat.clear(); }
+        }
+        g_strat_from_json = !strat.empty();
+        if (!g_strat_from_json)
+            std::fprintf(stderr,
+                "[backend][warn] BKZ default.json NOT loaded -> EmptyStrategy fallback "
+                "(no pruning, large-beta enum will be VERY slow). "
+                "Set FPLLL_STRATEGIES_JSON=/path/to/default.json\n");
+        // 3) 关键修复：无条件补齐到 MAX_BKZ_BLOCK+1 项。
+        //    fplll 的 BKZParam 收到空 vector 会“就地”把它填到当次 block_size 为止；
+        //    本 static 被所有调用共享，下次更大的 block_size 触发
+        //    strategies[bs] 越界读 -> SIGSEGV。补齐后 vector 永不为空、
+        //    覆盖一切 bs<=MAX_BKZ_BLOCK，BKZParam 不会再改写它。
+        for (long b = (long)strat.size(); b <= MAX_BKZ_BLOCK; ++b)
+            strat.emplace_back(Strategy::EmptyStrategy(b));
+    });
+    return strat;
 }
 
-// ==================== parsing / dump ====================
-static MyMatrix parse_matrix_core(const std::string& s) {
-    MyMatrix B; std::istringstream is(s); is >> B; return B;
-}
-static std::string dump_matrix_core(const MyMatrix& B) {
-    std::ostringstream os; os << B; return os.str();
-}
-
-static inline bool use_cuda_runtime() {
-    static int cached = -1;
-    if (cached < 0) {
-        const char* e = std::getenv("LATTICE_DISABLE_CUDA");
-        cached = (e && (e[0]=='1'||e[0]=='t'||e[0]=='T')) ? 0 : 1;
-    }
-    return cached == 1;
-}
-
-// ==================== reusable sieve database (SieveState) ====================
+// 所有 BKZ 的唯一入口：封顶 + 标志位齐全（BKZ_MAX_LOOPS 不给则 max_loops 被忽略）
+static void run_bkz(MyMatrix& L, int bs, int max_loops, double gh_factor) {
+    bs = std::max(2, std::min(bs, MAX_BKZ_BLOCK));
+    BKZParam par(bs, default_strategies());
+    par.flags     = BKZ_AUTO_ABORT | BKZ_GH_BND | BKZ_MAX_LOOPS;
+    par.max_loops = std::max(1, max_loops);
+    par.gh_factor = gh_factor;
+    try { bkz_reduction(&L, NULL, par); } catch (...) {}
+}// ==================== reusable sieve database (SieveState) ====================
 struct SieveState {
     int64_t mid = -1;
     int pos = 0, beta = 0, N = 0;
@@ -550,19 +566,15 @@ static bool enum_block_process(MyMatrix& Bb, int d, int cols, int beta) {
     lll_reduction(Bb, 0.99);
     if (d < 2) return true;
     std::vector<double> gs_b; block_gso(Bb, gs_b);
-    for (double g : gs_b) if (!std::isfinite(g)) return false;   // 秩亏/精度坏 -> 不枚举
+    for (double g : gs_b) if (!std::isfinite(g)) return false;   // 异常 profile 不进枚举
     double pot_before = block_logpot(gs_b);
 
     MyMatrix snap(d, cols);
     for (int i=0;i<d;++i) for (int j=0;j<cols;++j) snap[i][j]=Bb[i][j];
 
-    int bs = std::min({d, std::max(2, beta), SAFE_BKZ_MAX});      // ← 硬封顶
-    BKZParam par(bs, default_strategies());
-    par.flags = BKZ_AUTO_ABORT | BKZ_GH_BND;                      // ← 加 AUTO_ABORT
-    par.gh_factor = 1.05;
-    par.max_loops = std::min(d, 8);
-    try { bkz_reduction(&Bb, NULL, par, FT_DOUBLE, 0); } catch(...) {}
+    run_bkz(Bb, std::min(d, std::max(2, beta)), std::min(d, 12), 1.05);
     lll_reduction(Bb, 0.99);
+
     std::vector<double> gs_a; block_gso(Bb, gs_a);
     double pot_after = block_logpot(gs_a);
     if (pot_after <= pot_before + 1e-9) return true;
@@ -636,14 +648,13 @@ static void do_reduction(int64_t mid, MyMatrix& B, const std::string& method,
         for (int i=0;i<actual_beta;++i) for(int j=0;j<cols;++j) L[i][j]=B[pos+i][j];
         lll_reduction(L, 0.99);
         if (actual_beta>=4){
-            int ib=std::min(actual_beta,SAFE_BKZ_MAX);
-            BKZParam par(ib, default_strategies());   // now BKZ2.0 w/ strategies
-            par.flags=BKZ_AUTO_ABORT|BKZ_GH_BND;
-            if (ib<=20){par.gh_factor=1.1;par.max_loops=4;}
-            else if(ib<=35){par.gh_factor=1.05;par.max_loops=8;}
-            else {par.gh_factor=1.0;par.max_loops=16;}
-            try{ bkz_reduction(&L,NULL,par);}catch(...){}
-        }
+            int ib = std::min(actual_beta, MAX_BKZ_BLOCK);
+            double ghf; int loops;
+            if (ib<=20)      { ghf=1.1;  loops=4;  }
+            else if (ib<=35) { ghf=1.05; loops=8;  }
+            else             { ghf=1.0;  loops=16; }
+            run_bkz(L, ib, loops, ghf);
+        }        
         for (int i=0;i<actual_beta;++i) for(int j=0;j<cols;++j) B[pos+i][j]=L[i][j];
         info.backend="local_bkz"; info.accepted=true; changed=true;
 
@@ -877,6 +888,14 @@ PYBIND11_MODULE(my_project_backend, m){
           py::arg("matrix_id"), py::arg("pos"), py::arg("beta"));
     m.def("insert_coeff_vector", &insert_coeff_vector,
           py::arg("matrix_id"), py::arg("pos"), py::arg("beta"), py::arg("coeffs"));
+    m.def("strategies_info", [](){
+        auto& s = default_strategies();          // 触发加载
+        py::dict d;
+        d["from_json"] = g_strat_from_json;
+        d["path"]      = g_strat_path;
+        d["count"]     = (int)s.size();          // 应恒为 MAX_BKZ_BLOCK+1 = 129
+        return d;
+    });
 #ifdef USE_CUDA
     m.def("cuda_available", [](){ return cuda_is_available(); });
 #else

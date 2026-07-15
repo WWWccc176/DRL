@@ -1048,8 +1048,9 @@ class LatticeEnv:
                 file=sys.stderr,
                 flush=True,
             )
-            return my_project_backend.reduce(mid, "LOCAL_BKZ", beta, pos)
-
+            return my_project_backend.reduce(
+                mid, "LOCAL_BKZ", min(beta, SAFE_BKZ_MAX), pos
+            )
         # 插入后必须 LLL 恢复 GS
         return my_project_backend.reduce(mid, "LLL", 2, 0)
 
@@ -1598,6 +1599,14 @@ if __name__ == "__main__":
             print(
                 "[warn] SieverParams(gpus=1,bdgl) 不可用 -> 回退 CPU bgj1（sieve 很慢）"
             )
+
+    sinfo = my_project_backend.strategies_info()
+    print(f"[bkz strategies] {sinfo}")
+    if not sinfo.get("from_json"):
+        print(
+            "[warn] fplll default.json 未加载：β=30–39 的枚举无剪枝会极慢。"
+            "请 export FPLLL_STRATEGIES_JSON=<你的fplll源码目录>/strategies/default.json 后重跑。"
+        )
 
     DIMS_TO_RUN = list(range(50, 81))
     files = gather_files(DATASET_DIR, DIMS_TO_RUN, seeds_per_dim=2, max_envs=MAX_ENVS)
