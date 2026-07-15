@@ -7,23 +7,20 @@ a10.py — Dimension-agnostic Dueling-DDQN + 独立 G6K-GPU sieve 服务。
   sieve worker(s)  : 4 卡均摊 —— 常驻 g6k gpu_sieve 服务（每进程一次 CUDA context）
   env workers      : CPU      —— LLL / LOCAL_BKZ / ENUM / 状态构建（禁 CUDA）
 
-调度理念：网络极小(2-6GB, 毫秒级)，sieve 才是吞吐瓶颈。故 4 张卡全部跑
-  sieve 以最大化 env-steps/s；learner 寄生 GPU0（占用可忽略，自动限速到经验产出）。
+调试稳定配置：sieve worker=4（每卡 1 个 context），envs=48。确认协议与后端稳定后，
+  再按文件末尾注释扩到 8/12 context 压吞吐。
 
-动作执行策略（同 g6k_oracle.py）：
-  beta <  ENUM_MIN_BETA            -> LOCAL_BKZ           (CPU, env 内)
-  ENUM_MIN <= beta < SIEVE_MIN     -> ORACLE_ENUM_BLOCK   (CPU, env 内)
-  beta >= SIEVE_MIN_BETA(=40)      -> dump_block -> sieve 队列 -> GPU g6k
-                                      -> insert_coeff_vector；失败回退 ENUM
+进程间通信（本轮重构，杜绝 EOFError 根因）：
+  - 命令通道：主进程 <-> env worker 走 Pipe，严格 step->step response（不再混入 get_best）。
+  - sieve 请求：所有 env -> 单一 mp.Queue（多生产者安全）。
+  - sieve 应答：每 env 一条 mp.Queue（多个 sieve worker 可安全并发写；Pipe 多写者会损坏）。
+  - best 更新：随 step 的 info piggyback 回主进程，主通道永不错序。
 
-sieve 协议：env 只传 (env_id, seq, 块的整数行向量)，绝不跨进程传 pool_id。
+动作三档：beta<30 LOCAL_BKZ；30<=beta<40 ORACLE_ENUM_BLOCK；beta>=40 GPU sieve（失败回退 ENUM）。
 """
 
 # ============================================================
 # 角色守卫：必须在 import torch / my_project_backend 之前执行。
-# spawn 子进程会重新 import 本文件，此段保证：
-#   env   worker: 完全看不到 CUDA
-#   sieve worker: 只看到分配给它的那张物理 GPU（映射为它的 cuda:0），backend 走 CPU
 # ============================================================
 import os
 
@@ -48,7 +45,9 @@ import sys
 import glob
 import math
 import time
+import queue
 import random
+import traceback
 from collections import defaultdict
 
 import numpy as np
@@ -95,27 +94,20 @@ LLL_FREQ = 3
 # --- 路径（显式写死，允许环境变量覆盖）---
 PROJECT_ROOT = os.environ.get("DRL_ROOT", "/home/amax/projects/DRL")
 G6K_ROOT = os.environ.get("G6K_ROOT", "/home/amax/workspace/builds/g6k")
-# g6k_env.py 实际所在目录：优先 A10_G6K_HELPERS；否则在 main 里自动搜索 PROJECT_ROOT
 G6K_HELPER_DIR = os.environ.get("A10_G6K_HELPERS", "")
 
 # --- sieve 分工阈值 ---
 ENUM_MIN_BETA = 30  # 30~39 用 ORACLE_ENUM_BLOCK
-SIEVE_MIN_BETA = 40  # >=40 送 GPU sieve（block dim 40 起 sieve 才划算）
+SIEVE_MIN_BETA = 40  # >=40 送 GPU sieve
 SIEVE_TIMEOUT_S = 180.0
 
-# --- 4 卡调度：learner 在 GPU0，sieve 8 个 context 均摊 4 卡（每卡 2 个）---
-NUM_SIEVE_WORKERS = 8
-SIEVE_GPUS = [
-    "0",
-    "1",
-    "2",
-    "3",
-    "0",
-    "1",
-    "2",
-    "3",
-]  # worker i -> 物理 GPU SIEVE_GPUS[i]
-SIEVE_THREADS = 2  # 每个 g6k GPU sieve 的 host 侧 CPU 线程数
+# --- 调试稳定：4 卡各 1 个 sieve context（排除同卡多 context 变量）。稳定后见文末扩容 ---
+NUM_SIEVE_WORKERS = 4
+SIEVE_GPUS = ["0", "1", "2", "3"]  # worker i -> 物理 GPU SIEVE_GPUS[i % len]
+SIEVE_THREADS = 2
+
+# --- 规模 ---
+MAX_ENVS = 48
 
 
 def _status(msg):
@@ -137,7 +129,6 @@ def matrix_to_string(basis):
 
 
 def parse_fplll(s):
-    """容错解析 fplll 括号格式（dump_matrix / dump_block 通用）。"""
     out = []
     for line in s.strip().splitlines():
         line = line.strip().lstrip("[").rstrip("]").strip()
@@ -164,7 +155,6 @@ def parse_dim_seed(path):
 
 
 def discover_helper_dir(explicit, project_root):
-    """确定 g6k_env.py 真实目录：优先显式；否则在 project_root 下搜索。不猜测。"""
     if explicit:
         if os.path.isfile(os.path.join(explicit, "g6k_env.py")):
             return explicit
@@ -182,7 +172,7 @@ def discover_helper_dir(explicit, project_root):
 # 动作空间
 # ============================================================
 def build_action_list(dim):
-    beta_max = min(int(0.8 * dim), 64)  # dim>=50 时最大 beta 可达 40+，会触发 sieve 档
+    beta_max = min(int(0.8 * dim), 64)
     beta_min = max(8, int(0.15 * dim))
     raw = np.geomspace(beta_min, max(beta_min + 1, beta_max), 7)
     betas = sorted(set(max(2, int(round(x))) for x in raw))
@@ -327,15 +317,12 @@ class FiLMAxialBlock(nn.Module):
 
 
 def _integral_region_mean(H, r0, r1, c0, c1, area):
-    """积分图区域均值。H:[B,C,D,D] -> [B,C,A]。"""
     I = F.pad(H, (1, 0, 1, 0)).cumsum(2).cumsum(3)
     s = I[:, :, r1, c1] - I[:, :, r0, c1] - I[:, :, r1, c0] + I[:, :, r0, c0]
     return s / area.view(1, 1, -1)
 
 
 def _region_max(H, spec):
-    """区域极值池化：每个唯一 beta 做一次 max_pool2d(kernel=beta, stride=1)，
-    再取对角位置 (p,p)。H:[B,C,D,D] -> [B,C,A]。"""
     B, C, D, _ = H.shape
     out = H.new_empty(B, C, spec["num_actions"])
     for b, (idx, pos) in spec["beta_groups"].items():
@@ -701,12 +688,12 @@ class DQNAgent:
 
 
 # ============================================================
-# G6K sieve 服务进程（一张物理 GPU，一次 CUDA context，逐请求复用）
+# G6K sieve 服务进程
 # ============================================================
-def sieve_worker(req_q, resp_conns, helper_dir, worker_id):
+def sieve_worker(req_q, resp_queues, helper_dir, worker_id):
     import faulthandler
 
-    faulthandler.enable()
+    faulthandler.enable(all_threads=True)
 
     # chdir 只改工作目录，不可靠替代模块搜索路径 -> G6K_ROOT 与 helper_dir 都进 sys.path
     for pth in (G6K_ROOT, helper_dir):
@@ -717,6 +704,19 @@ def sieve_worker(req_q, resp_conns, helper_dir, worker_id):
         import g6k_env  # noqa: F401  MUST be first: chdir 到 g6k_env 期望的工作目录
     except Exception as e:
         print(f"[sieve{worker_id}] g6k_env import failed: {e}", flush=True)
+
+    def _send(env_id, payload):
+        # 多个 sieve worker 可并发写同一 env 的 Queue（多生产者安全）。用 put_nowait
+        # 防止极端情况下 worker 阻塞：应答堆积仅意味着该 env 一直超时，丢弃即回退 ENUM。
+        try:
+            resp_queues[env_id].put_nowait(payload)
+        except queue.Full:
+            print(
+                f"[sieve{worker_id}] resp queue full for env{env_id}, dropped",
+                flush=True,
+            )
+        except Exception:
+            pass
 
     g6k_ok = True
     IntegerMatrix = Siever = SieverParams = None
@@ -742,10 +742,7 @@ def sieve_worker(req_q, resp_conns, helper_dir, worker_id):
             if item is None:
                 return
             env_id, seq, rows = item
-            try:
-                resp_conns[env_id].send((seq, None))
-            except Exception:
-                pass
+            _send(env_id, (seq, None))
         return
 
     print(f"[sieve{worker_id}] ready", flush=True)
@@ -789,10 +786,7 @@ def sieve_worker(req_q, resp_conns, helper_dir, worker_id):
             )
             coeffs = None
 
-        try:
-            resp_conns[env_id].send((seq, coeffs))
-        except Exception:
-            pass
+        _send(env_id, (seq, coeffs))
         n_done += 1
         t_busy += time.time() - t0
         if n_done % 50 == 0:
@@ -803,7 +797,6 @@ def sieve_worker(req_q, resp_conns, helper_dir, worker_id):
 
 
 def _g6k_probe(conn, helper_dir):
-    """启动前自检子进程：sieve 角色下导入 g6k，报告 __file__ / GPU 能力。"""
     info = {"ok": False, "cuda_visible": os.environ.get("CUDA_VISIBLE_DEVICES")}
     try:
         for pth in (G6K_ROOT, helper_dir):
@@ -835,7 +828,6 @@ def _g6k_probe(conn, helper_dir):
 
 
 def validate_g6k(helper_dir, gpu, timeout=180):
-    """在启动 62 个 env 之前单独验证 g6k 可用性（含 GPU 能力）。"""
     parent_conn, child_conn = mp.Pipe()
     os.environ["A10_ROLE"] = "sieve"
     os.environ["A10_SIEVE_GPU"] = str(gpu)
@@ -857,14 +849,14 @@ def validate_g6k(helper_dir, gpu, timeout=180):
 
 
 class SieveClient:
-    """env worker 侧同步客户端：dump_block -> 请求 -> 按 seq 对齐等结果。
-    seq 对齐：超时返回 None 后，那次请求的迟到响应会被下次调用识别并丢弃，
-    避免把上一个 block 的系数错插到当前 block（会静默破坏矩阵）。"""
+    """env 侧同步客户端：dump_block -> 请求 -> 按 seq 对齐等结果。
+    应答走每 env 独立 mp.Queue（多生产者安全）。seq 对齐丢弃超时请求的迟到响应，
+    避免把上一个 block 的系数错插到当前 block。"""
 
-    def __init__(self, env_id, req_q, resp_conn):
+    def __init__(self, env_id, req_q, resp_q):
         self.env_id = env_id
         self.req_q = req_q
-        self.resp_conn = resp_conn
+        self.resp_q = resp_q
         self.seq = 0
 
     def sieve_block(self, rows):
@@ -874,9 +866,12 @@ class SieveClient:
         deadline = time.time() + SIEVE_TIMEOUT_S
         while True:
             remaining = deadline - time.time()
-            if remaining <= 0 or not self.resp_conn.poll(remaining):
+            if remaining <= 0:
                 return None  # 超时 -> 上层回退 ENUM
-            seq, coeffs = self.resp_conn.recv()
+            try:
+                seq, coeffs = self.resp_q.get(timeout=remaining)
+            except queue.Empty:
+                return None
             if seq == my_seq:
                 return coeffs
             # 否则是此前超时请求的迟到响应，丢弃继续等
@@ -907,6 +902,7 @@ class LatticeEnv:
         self.best_vector = self.best_basis = None
         self.best_episode = 0
         self.episode_count = 0
+        self.best_dirty = False  # piggyback 标记：本 step 内 best 是否刷新
 
     def _preload(self):
         mat = parse_challenge_file(self.filepath)
@@ -983,6 +979,17 @@ class LatticeEnv:
             mat = parse_fplll(my_project_backend.dump_matrix(self.current_pool_id))
             if mat:
                 self.best_vector, self.best_basis = mat[0], mat
+            self.best_dirty = True
+
+    def pop_best_update(self):
+        """随 step 的 info 回传主进程；主通道因此不必再发 get_best（避免协议错序）。
+        结果文件只用 vector，不传完整 basis 省带宽。"""
+        if not self.best_dirty:
+            return None
+        self.best_dirty = False
+        payload = self.get_best_payload()
+        payload.pop("basis", None)
+        return payload
 
     # ---- 三档动作执行：LOCAL_BKZ / ENUM / GPU sieve（回退 ENUM）----
     def _exec_action(self, beta, pos):
@@ -997,20 +1004,48 @@ class LatticeEnv:
 
         # GPU sieve：dump 原始块行（不做 LLL —— coeffs 必须相对原始行）
         rows = parse_fplll(my_project_backend.dump_block(mid, pos, beta))
+
+        # 后端契约校验：块必须恰好 beta 行。不符即后端 bug，直接抛出让 env 显式崩溃并打印。
+        if len(rows) != beta:
+            raise RuntimeError(
+                f"dump_block row count mismatch: env={self.env_id}, dim={self.dim}, "
+                f"beta={beta}, pos={pos}, got_rows={len(rows)}"
+            )
+
         coeffs = self.sieve.sieve_block(rows)
-        if coeffs:
-            try:
-                my_project_backend.insert_coeff_vector(
-                    mid, pos, beta, [str(int(c)) for c in coeffs]
-                )
-            except Exception:
-                pass
-        else:  # sieve 失败/超时 -> ENUM，绝不静默跳过
+        coeffs_valid = (
+            coeffs is not None
+            and len(coeffs) == beta
+            and any(int(c) != 0 for c in coeffs)
+        )
+        if (
+            not coeffs_valid
+        ):  # sieve 失败/超时/非法 -> ENUM，绝不静默跳过、绝不插非法系数
+            print(
+                f"[env{self.env_id}] invalid/empty sieve result: dim={self.dim}, "
+                f"beta={beta}, pos={pos}, "
+                f"coeff_len={None if coeffs is None else len(coeffs)}",
+                flush=True,
+            )
             try:
                 return my_project_backend.reduce(mid, "ORACLE_ENUM_BLOCK", beta, pos)
             except Exception:
                 return my_project_backend.reduce(mid, "LOCAL_BKZ", beta, pos)
-        # 插入后必须 LLL 恢复 GS，顺便拿 info
+
+        try:
+            my_project_backend.insert_coeff_vector(
+                mid, pos, beta, [str(int(c)) for c in coeffs]
+            )
+        except Exception as exc:
+            print(
+                f"[env{self.env_id}] insert_coeff_vector failed: dim={self.dim}, "
+                f"beta={beta}, pos={pos}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+            return my_project_backend.reduce(mid, "LOCAL_BKZ", beta, pos)
+
+        # 插入后必须 LLL 恢复 GS
         return my_project_backend.reduce(mid, "LLL", 2, 0)
 
     def step(self, action_idx):
@@ -1116,35 +1151,83 @@ class LatticeEnv:
 
 
 # ============================================================
-# env worker（CPU-only；sieve 走队列）
+# env worker（CPU-only；sieve 走队列；失败必须显式打印 + 退出）
 # ============================================================
-def env_worker(remote, parent_remote, filepath, env_id, sieve_req_q, sieve_resp_conn):
+def env_worker(remote, parent_remote, filepath, env_id, sieve_req_q, sieve_resp_q):
+    import faulthandler
+
+    faulthandler.enable(all_threads=True)  # 原生崩溃(SIGSEGV/SIGABRT)也会打印 Python 栈
     parent_remote.close()
-    client = (
-        SieveClient(env_id, sieve_req_q, sieve_resp_conn)
-        if sieve_req_q is not None
-        else None
-    )
-    env = LatticeEnv(filepath, env_id=env_id, sieve_client=client)
+
+    env = None
+    last_cmd = None
+    last_action = None
+
     try:
+        client = (
+            SieveClient(env_id, sieve_req_q, sieve_resp_q)
+            if sieve_req_q is not None
+            else None
+        )
+        env = LatticeEnv(filepath, env_id=env_id, sieve_client=client)
+
         while True:
-            cmd, data = remote.recv()
-            if cmd == "step":
-                s, r, d, info = env.step(data)
-                if d:
-                    s = env.reset()
-                remote.send((s, r, d, info))
-            elif cmd == "reset":
+            last_cmd, data = remote.recv()
+
+            if last_cmd == "step":
+                action_idx = int(data)
+                beta, pos = env.action_list[action_idx]
+                last_action = {
+                    "action_idx": action_idx,
+                    "beta": beta,
+                    "pos": pos,
+                    "pool_id": env.current_pool_id,
+                    "step": env.current_step,
+                }
+
+                state, reward, done, info = env.step(action_idx)
+                if done:
+                    state = env.reset()
+
+                bu = env.pop_best_update()
+                if bu is not None:
+                    info["best_update"] = bu
+                remote.send((state, reward, done, info))
+
+            elif last_cmd == "reset":
                 remote.send(env.reset())
-            elif cmd == "get_best":
+
+            elif last_cmd == "get_best":
                 remote.send(env.get_best_payload())
-            elif cmd == "close":
-                remote.close()
+
+            elif last_cmd == "close":
                 break
-    except (KeyboardInterrupt, EOFError):
-        pass
+
+            else:
+                raise RuntimeError(f"Unknown command in env{env_id}: {last_cmd!r}")
+
+    except BaseException as exc:
+        dim, seed_id = parse_dim_seed(filepath)
+        print(
+            "\n"
+            f"[env{env_id}] FATAL\n"
+            f"  pid         = {os.getpid()}\n"
+            f"  dim         = {dim}\n"
+            f"  seed        = {seed_id}\n"
+            f"  file        = {filepath}\n"
+            f"  last_cmd    = {last_cmd!r}\n"
+            f"  last_action = {last_action!r}\n"
+            f"  exception   = {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+        traceback.print_exc()
+        raise
     finally:
-        remote.close()
+        try:
+            remote.close()
+        except Exception:
+            pass
 
 
 class SubprocVecEnv:
@@ -1154,21 +1237,19 @@ class SubprocVecEnv:
         self.env_dims = [parse_dim_seed(f)[0] for f in self.files]
         self.env_seed_ids = [parse_dim_seed(f)[1] for f in self.files]
 
-        # ---- sieve 基础设施：一个共享请求队列 + 每 env 一条应答 Pipe ----
+        # ---- sieve 基础设施：单一请求 Queue（多生产者）+ 每 env 一条应答 Queue（多生产者）----
         self.sieve_req_q = mp.Queue() if use_sieve else None
+        self.sieve_resp_queues = (
+            [mp.Queue(maxsize=64) for _ in range(self.num_envs)] if use_sieve else []
+        )
         self.sieve_procs = []
-        resp_recv, resp_send = [], []
         if use_sieve:
-            for _ in range(self.num_envs):
-                r, s = mp.Pipe(duplex=False)
-                resp_recv.append(r)
-                resp_send.append(s)
             for wid in range(NUM_SIEVE_WORKERS):
                 os.environ["A10_ROLE"] = "sieve"
                 os.environ["A10_SIEVE_GPU"] = SIEVE_GPUS[wid % len(SIEVE_GPUS)]
                 p = mp.Process(
                     target=sieve_worker,
-                    args=(self.sieve_req_q, resp_send, helper_dir, wid),
+                    args=(self.sieve_req_q, self.sieve_resp_queues, helper_dir, wid),
                     daemon=True,
                 )
                 p.start()
@@ -1193,7 +1274,7 @@ class SubprocVecEnv:
                     f,
                     eid,
                     self.sieve_req_q,
-                    resp_recv[eid] if use_sieve else None,
+                    self.sieve_resp_queues[eid] if use_sieve else None,
                 ),
                 daemon=True,
             )
@@ -1212,15 +1293,35 @@ class SubprocVecEnv:
         self.remotes[eid].send(("step", action))
 
     def recv_one(self, eid):
-        return self.remotes[eid].recv()
+        try:
+            return self.remotes[eid].recv()
+        except EOFError as exc:
+            proc = self.processes[eid]
+            proc.join(timeout=0.5)
+            sieve_status = [
+                {
+                    "worker": wid,
+                    "pid": p.pid,
+                    "alive": p.is_alive(),
+                    "exitcode": p.exitcode,
+                }
+                for wid, p in enumerate(self.sieve_procs)
+            ]
+            raise RuntimeError(
+                "\nEnvironment worker exited unexpectedly:\n"
+                f"  env_id        = {eid}\n"
+                f"  dim           = {self.env_dims[eid]}\n"
+                f"  seed          = {self.env_seed_ids[eid]}\n"
+                f"  file          = {self.files[eid]}\n"
+                f"  worker_pid    = {proc.pid}\n"
+                f"  worker_alive  = {proc.is_alive()}\n"
+                f"  worker_exit   = {proc.exitcode}  "
+                f"(1=Py异常  -6=SIGABRT  -9=SIGKILL/OOM  -11=SIGSEGV)\n"
+                f"  sieve_status  = {sieve_status}\n"
+            ) from exc
 
     def poll_ready(self, eids):
         return [i for i in eids if self.remotes[i].poll(timeout=0)]
-
-    def get_bests(self):
-        for r in self.remotes:
-            r.send(("get_best", None))
-        return [r.recv() for r in self.remotes]
 
     def close(self):
         for r in self.remotes:
@@ -1230,7 +1331,10 @@ class SubprocVecEnv:
                 pass
         if self.sieve_req_q is not None:
             for _ in self.sieve_procs:
-                self.sieve_req_q.put(None)
+                try:
+                    self.sieve_req_q.put(None)
+                except Exception:
+                    pass
         for p in self.processes:
             p.join(timeout=5)
         for p in self.sieve_procs:
@@ -1274,7 +1378,7 @@ def save_final_summary(results_dir, all_infos, goal=1.05):
 
 
 # ============================================================
-# 训练主循环
+# 训练主循环（best 走 piggyback；主通道严格 step->step response）
 # ============================================================
 def train_all(
     vec_env,
@@ -1290,6 +1394,7 @@ def train_all(
     os.makedirs(results_dir, exist_ok=True)
     num_envs = vec_env.num_envs
     dims = vec_env.env_dims
+    total_seeds = len(set(zip(vec_env.env_dims, vec_env.env_seed_ids)))
 
     global_best, global_info = {}, {}
     history = {"loss": [], "best_min": []}
@@ -1300,6 +1405,15 @@ def train_all(
         global_best.update(resume_extra.get("global_best", {}))
         global_info.update(resume_extra.get("global_info", {}))
         history = resume_extra.get("history", history)
+
+    def apply_best(bu):
+        key = (bu["dim"], bu["seed_id"])
+        if bu["ratio"] < global_best.get(key, float("inf")):
+            first = key not in global_info
+            global_best[key] = bu["ratio"]
+            global_info[key] = bu
+            save_seed_result(results_dir, bu, is_update=not first)
+            _log(f"  ★ dim{bu['dim']} seed{bu['seed_id']} best={bu['ratio']:.8f}")
 
     states = vec_env.reset_all()
     state_by_eid = {e: states[e] for e in range(num_envs)}
@@ -1326,6 +1440,9 @@ def train_all(
         for e in ready:
             obs, rew, done, info = vec_env.recv_one(e)
             pending.discard(e)
+            bu = info.pop("best_update", None)
+            if bu is not None:
+                apply_best(bu)
             agent.remember(dims[e], prev_s[e], prev_a[e], rew, obs, done)
             states[e] = obs
             newly[e] = obs
@@ -1346,25 +1463,14 @@ def train_all(
             pending.add(e)
 
         if env_steps % log_every < len(ready):
-            bests = vec_env.get_bests()
-            reached = 0
-            for b in bests:
-                key = (b["dim"], b["seed_id"])
-                if b["ratio"] < global_best.get(key, float("inf")):
-                    first = key not in global_info
-                    global_best[key] = b["ratio"]
-                    global_info[key] = b
-                    save_seed_result(results_dir, b, is_update=not first)
-                    _log(f"  ★ dim{b['dim']} seed{b['seed_id']} best={b['ratio']:.8f}")
-                if global_best.get(key, 9) < goal_threshold:
-                    reached += 1
             best_min = min(global_best.values()) if global_best else float("inf")
+            reached = sum(1 for v in global_best.values() if v < goal_threshold)
             history["best_min"].append(best_min)
             rate = env_steps / max(1e-6, time.time() - t_start)
             _status(
                 f"upd {updates}/{total_updates} | ε{eps_now():.3f} | "
                 f"loss{history['loss'][-1] if history['loss'] else 0:.4f} | "
-                f"bestmin {best_min:.6f} | reached {reached}/{len(global_best)} | "
+                f"bestmin {best_min:.6f} | reached {reached}/{total_seeds} | "
                 f"{rate:.0f} env-steps/s"
             )
 
@@ -1380,11 +1486,17 @@ def train_all(
                 },
             )
 
-    for b in vec_env.get_bests():
-        key = (b["dim"], b["seed_id"])
-        if b["ratio"] < global_best.get(key, float("inf")):
-            global_best[key] = b["ratio"]
-            global_info[key] = b
+    # ---- 收尾：排空在飞的 step，捕获最后一刻的 best（只 recv pending，协议安全）----
+    for e in list(pending):
+        try:
+            if vec_env.remotes[e].poll(2.0):
+                _, _, _, info = vec_env.recv_one(e)
+                bu = info.pop("best_update", None)
+                if bu is not None:
+                    apply_best(bu)
+        except Exception:
+            pass
+
     save_final_summary(results_dir, list(global_info.values()), goal_threshold)
 
     plt.figure(figsize=(12, 5))
@@ -1406,8 +1518,8 @@ def train_all(
 # ============================================================
 # main
 # ============================================================
-def gather_files(dataset_dir, dims, seeds_per_dim=2):
-    files = []
+def gather_files(dataset_dir, dims, seeds_per_dim=2, max_envs=None):
+    per_dim = {}
     for dim in dims:
         fs = sorted(
             glob.glob(os.path.join(dataset_dir, f"svpchallengedim{dim}seed*.txt")),
@@ -1415,7 +1527,29 @@ def gather_files(dataset_dir, dims, seeds_per_dim=2):
         )
         if seeds_per_dim:
             fs = fs[:seeds_per_dim]
-        files.extend(fs)
+        if fs:
+            per_dim[dim] = list(fs)
+
+    total = sum(len(v) for v in per_dim.values())
+    if max_envs is not None and total > max_envs:
+        # 先从高维起逐个砍掉“第二个 seed”（每维保底 1 个）
+        for dim in sorted(per_dim.keys(), reverse=True):
+            while total > max_envs and len(per_dim[dim]) > 1:
+                per_dim[dim].pop()
+                total -= 1
+            if total <= max_envs:
+                break
+        # 仍超（需砍到某维 0 个）则从高维起整维丢弃
+        if total > max_envs:
+            for dim in sorted(per_dim.keys(), reverse=True):
+                if total <= max_envs:
+                    break
+                total -= len(per_dim[dim])
+                del per_dim[dim]
+
+    files = []
+    for dim in sorted(per_dim.keys()):
+        files.extend(per_dim[dim])
     return files
 
 
@@ -1429,22 +1563,18 @@ if __name__ == "__main__":
     n_gpu = torch.cuda.device_count()
     print(
         f"Visible GPUs (learner): {n_gpu} | learner -> physical GPU0 | "
-        f"sieve {NUM_SIEVE_WORKERS} workers spread over GPUs {sorted(set(SIEVE_GPUS))}"
+        f"sieve {NUM_SIEVE_WORKERS} workers over GPUs {sorted(set(SIEVE_GPUS))}"
     )
     print(f"backend: {getattr(my_project_backend, '__file__', '?')}")
     print(f"PROJECT_ROOT={PROJECT_ROOT}  G6K_ROOT={G6K_ROOT}")
 
     DATASET_DIR = os.path.join(PROJECT_ROOT, "dataset")
-    RESULTS_DIR = os.path.join(
-        PROJECT_ROOT, "results", "a10_shared"
-    )  # a11 checkpoint 不会被自动加载
+    RESULTS_DIR = os.path.join(PROJECT_ROOT, "results", "a10_shared")
     os.makedirs(RESULTS_DIR, exist_ok=True)
 
-    # ---- 确定 g6k_env.py 目录（不猜测：显式 > 搜索 PROJECT_ROOT）----
     helper_dir = discover_helper_dir(G6K_HELPER_DIR, PROJECT_ROOT)
     print(f"G6K_HELPER_DIR={helper_dir or '(未找到 g6k_env.py)'}")
 
-    # ---- 启动前单独验证 g6k（GPU 能力），避免起 62 个 env 后才发现不可用 ----
     probe = validate_g6k(helper_dir, SIEVE_GPUS[0])
     print(f"[g6k probe] {probe}")
     if not probe or not probe.get("ok"):
@@ -1455,22 +1585,29 @@ if __name__ == "__main__":
             USE_SIEVE = False
         else:
             print(
-                "[fatal] g6k 自检失败。修好 g6k / 路径后重试；"
-                "或设 A10_ALLOW_NO_SIEVE=1 用纯 CPU-ENUM 跑。"
+                "[fatal] g6k 自检失败。修好 g6k / 路径后重试；或设 A10_ALLOW_NO_SIEVE=1 用纯 CPU-ENUM 跑。"
             )
             sys.exit(1)
     else:
         USE_SIEVE = True
         if not probe.get("gpu_params_ok"):
             print(
-                "[warn] SieverParams(gpus=1,bdgl) 不可用 -> 将回退 CPU bgj1（sieve 会很慢）"
+                "[warn] SieverParams(gpus=1,bdgl) 不可用 -> 回退 CPU bgj1（sieve 很慢）"
             )
 
     DIMS_TO_RUN = list(range(50, 81))
-    files = gather_files(DATASET_DIR, DIMS_TO_RUN, seeds_per_dim=2)
+    files = gather_files(DATASET_DIR, DIMS_TO_RUN, seeds_per_dim=2, max_envs=MAX_ENVS)
     if not files:
         print("No dataset files found in", DATASET_DIR)
         sys.exit(1)
+
+    comp = defaultdict(int)
+    for f in files:
+        comp[parse_dim_seed(f)[0]] += 1
+    print(
+        f"env 组成（共 {len(files)}，MAX_ENVS={MAX_ENVS}）: "
+        f"{ {d: comp[d] for d in sorted(comp)} }"
+    )
 
     vec_env = SubprocVecEnv(
         files, envs_per_seed=1, use_sieve=USE_SIEVE, helper_dir=helper_dir
@@ -1491,25 +1628,30 @@ if __name__ == "__main__":
     if resume_extra:
         print("Resumed a10 shared checkpoint.")
 
-    train_all(
-        vec_env,
-        agent,
-        RESULTS_DIR,
-        total_updates=200000,
-        train_every=4,
-        log_every=4000,
-        save_every=8000,
-        goal_threshold=0.85,
-        resume_extra=resume_extra,
-    )
-    vec_env.close()
+    try:
+        train_all(
+            vec_env,
+            agent,
+            RESULTS_DIR,
+            total_updates=200000,
+            train_every=4,
+            log_every=4000,
+            save_every=8000,
+            goal_threshold=0.85,
+            resume_extra=resume_extra,
+        )
+    finally:
+        vec_env.close()
 
 # ============================================================
-# 调优备注（4×48G）：
-#  1. watch -n1 nvidia-smi 看 4 卡 GPU-Util。都没打满 -> 加 sieve context：
-#     NUM_SIEVE_WORKERS=12, SIEVE_GPUS=["0","1","2","3"]*3。
-#  2. 若 learner 训练明显被拖慢（loss 更新变稀）-> 给 GPU0 减负：
-#     NUM_SIEVE_WORKERS=7, SIEVE_GPUS=["1","2","3","0","1","2","3"]（GPU0 只 1 个陪 learner）。
-#  3. CPU 别超订：62 env(OMP=1) + 8 sieve(各 SIEVE_THREADS=2)=78 线程 + main(4)。
-#     核数不够就降 seeds_per_dim 或 SIEVE_THREADS。
+# 排障 & 调优（4×48G）
+#  本文件已是「调试稳定」配置：4 sieve worker（每卡1）、48 env。
+#  逐级放大，任何一级崩了先看 [envN] FATAL 的 traceback 与 worker_exit：
+#     1 env + 1 sieve  ->  48 env + 1 sieve  ->  48 env + 4 sieve  ->  48 env + 8 sieve
+#  稳定后压吞吐（sieve 是瓶颈，非 learner）：
+#     NUM_SIEVE_WORKERS=8,  SIEVE_GPUS=["0","1","2","3"]*2
+#     NUM_SIEVE_WORKERS=12, SIEVE_GPUS=["0","1","2","3"]*3
+#  learner 若被拖慢（loss 更新变稀）-> GPU0 减负：SIEVE_GPUS 里少放一个 "0"。
+#  CPU 别超订：48 env(OMP=1) + 4 sieve(各2线程=8) + main(4) ≈ 60 线程。
+#  单维排查：DIMS_TO_RUN=[50]; seeds_per_dim=1; NUM_SIEVE_WORKERS=1; SIEVE_GPUS=["0"]。
 # ============================================================
