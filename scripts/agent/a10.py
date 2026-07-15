@@ -1,30 +1,33 @@
 #!/usr/bin/env python3
 """
-a11.py — Dimension-agnostic Dueling-DDQN + 独立 G6K-GPU sieve 服务。
+a10.py — Dimension-agnostic Dueling-DDQN + 独立 G6K-GPU sieve 服务。
 
-进程/GPU 布局（两张 4090）：
-  main (learner)   : GPU0  —— CNN/DDQN 推理 + PER 训练
-  sieve worker(s)  : GPU1  —— 常驻 g6k gpu_sieve 服务（一次 CUDA context）
-  env workers      : CPU   —— LLL / LOCAL_BKZ / ENUM / 状态构建
+进程/GPU 布局（本机检测到 4 张 48G 卡）：
+  main (learner)   : 物理 GPU0 —— CNN/DDQN 推理 + PER 训练（torch, cuda:0）
+  sieve worker(s)  : 4 卡均摊 —— 常驻 g6k gpu_sieve 服务（每进程一次 CUDA context）
+  env workers      : CPU      —— LLL / LOCAL_BKZ / ENUM / 状态构建（禁 CUDA）
+
+调度理念：网络极小(2-6GB, 毫秒级)，sieve 才是吞吐瓶颈。故 4 张卡全部跑
+  sieve 以最大化 env-steps/s；learner 寄生 GPU0（占用可忽略，自动限速到经验产出）。
 
 动作执行策略（同 g6k_oracle.py）：
   beta <  ENUM_MIN_BETA            -> LOCAL_BKZ           (CPU, env 内)
   ENUM_MIN <= beta < SIEVE_MIN     -> ORACLE_ENUM_BLOCK   (CPU, env 内)
-  beta >= SIEVE_MIN_BETA           -> dump_block -> sieve 队列 -> GPU1 g6k
+  beta >= SIEVE_MIN_BETA(=40)      -> dump_block -> sieve 队列 -> GPU g6k
                                       -> insert_coeff_vector；失败回退 ENUM
 
-sieve 协议：env 只传 (env_id, 块的整数行向量)，绝不跨进程传 pool_id。
+sieve 协议：env 只传 (env_id, seq, 块的整数行向量)，绝不跨进程传 pool_id。
 """
 
 # ============================================================
 # 角色守卫：必须在 import torch / my_project_backend 之前执行。
 # spawn 子进程会重新 import 本文件，此段保证：
 #   env   worker: 完全看不到 CUDA
-#   sieve worker: 只看到物理 GPU1（映射为它的 cuda:0），backend 仍走 CPU
+#   sieve worker: 只看到分配给它的那张物理 GPU（映射为它的 cuda:0），backend 走 CPU
 # ============================================================
 import os
 
-_ROLE = os.environ.get("A11_ROLE", "main")
+_ROLE = os.environ.get("A10_ROLE", "main")
 if _ROLE == "env":
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
     os.environ["LATTICE_DISABLE_CUDA"] = "1"
@@ -32,8 +35,8 @@ if _ROLE == "env":
     os.environ["MKL_NUM_THREADS"] = "1"
     os.environ["OPENBLAS_NUM_THREADS"] = "1"
 elif _ROLE == "sieve":
-    os.environ["CUDA_VISIBLE_DEVICES"] = os.environ.get("A11_SIEVE_GPU", "1")
-    os.environ["LATTICE_DISABLE_CUDA"] = "1"   # backend 走 CPU；GPU 留给 g6k
+    os.environ["CUDA_VISIBLE_DEVICES"] = os.environ.get("A10_SIEVE_GPU", "0")
+    os.environ["LATTICE_DISABLE_CUDA"] = "1"  # backend 走 CPU；GPU 留给 g6k
     os.environ["OMP_NUM_THREADS"] = "2"
     os.environ["MKL_NUM_THREADS"] = "2"
 else:  # main / learner
@@ -89,18 +92,30 @@ DIM_REF = 60.0
 NUM_GLOBALS = 7
 LLL_FREQ = 3
 
-# --- sieve 分工阈值（同 g6k_oracle）---
-ENUM_MIN_BETA = 50     # >= 此值不再用 LOCAL_BKZ
-SIEVE_MIN_BETA = 60    # >= 此值送 GPU sieve；60 以下 sieve 不划算
-SIEVE_TIMEOUT_S = 180.0
-NUM_SIEVE_WORKERS = 1  # 两张卡 -> GPU1 一个常驻 sieve；想再压榨可加到 2
-SIEVE_GPUS = ["1"]     # 物理 GPU 编号（每个 worker 取 SIEVE_GPUS[i % len]）
-SIEVE_THREADS = 2      # g6k CPU 线程数（GPU sieve 的 host 侧）
+# --- 路径（显式写死，允许环境变量覆盖）---
+PROJECT_ROOT = os.environ.get("DRL_ROOT", "/home/amax/projects/DRL")
+G6K_ROOT = os.environ.get("G6K_ROOT", "/home/amax/workspace/builds/g6k")
+# g6k_env.py 实际所在目录：优先 A10_G6K_HELPERS；否则在 main 里自动搜索 PROJECT_ROOT
+G6K_HELPER_DIR = os.environ.get("A10_G6K_HELPERS", "")
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-G6K_HELPER_DIR = os.environ.get(
-    "A11_G6K_HELPERS", os.path.join(PROJECT_ROOT, "scripts", "analyse")
-)  # 存放你已有的 g6k_env.py 的目录
+# --- sieve 分工阈值 ---
+ENUM_MIN_BETA = 30  # 30~39 用 ORACLE_ENUM_BLOCK
+SIEVE_MIN_BETA = 40  # >=40 送 GPU sieve（block dim 40 起 sieve 才划算）
+SIEVE_TIMEOUT_S = 180.0
+
+# --- 4 卡调度：learner 在 GPU0，sieve 8 个 context 均摊 4 卡（每卡 2 个）---
+NUM_SIEVE_WORKERS = 8
+SIEVE_GPUS = [
+    "0",
+    "1",
+    "2",
+    "3",
+    "0",
+    "1",
+    "2",
+    "3",
+]  # worker i -> 物理 GPU SIEVE_GPUS[i]
+SIEVE_THREADS = 2  # 每个 g6k GPU sieve 的 host 侧 CPU 线程数
 
 
 def _status(msg):
@@ -148,11 +163,26 @@ def parse_dim_seed(path):
     return (int(d.group(1)) if d else 0, int(s.group(1)) if s else 0)
 
 
+def discover_helper_dir(explicit, project_root):
+    """确定 g6k_env.py 真实目录：优先显式；否则在 project_root 下搜索。不猜测。"""
+    if explicit:
+        if os.path.isfile(os.path.join(explicit, "g6k_env.py")):
+            return explicit
+        print(
+            f"[warn] A10_G6K_HELPERS={explicit} 下未找到 g6k_env.py，转为自动搜索",
+            flush=True,
+        )
+    for root, _dirs, fnames in os.walk(project_root):
+        if "g6k_env.py" in fnames:
+            return root
+    return ""
+
+
 # ============================================================
 # 动作空间
 # ============================================================
 def build_action_list(dim):
-    beta_max = min(int(0.8 * dim), 64)   # 提到 64：dim>=75 时才会出现 sieve 档动作
+    beta_max = min(int(0.8 * dim), 64)  # dim>=50 时最大 beta 可达 40+，会触发 sieve 档
     beta_min = max(8, int(0.15 * dim))
     raw = np.geomspace(beta_min, max(beta_min + 1, beta_max), 7)
     betas = sorted(set(max(2, int(round(x))) for x in raw))
@@ -176,14 +206,18 @@ def build_action_spec(dim, device):
     end_idx = np.clip(poss + betas - 1, 0, dim - 1)
     area = (betas.astype(np.float32)) ** 2
     emb = np.stack(
-        [betas / dim, poss / dim, (poss + betas) / dim,
-         betas / BETA_REF, (poss + betas / 2.0) / dim],
+        [
+            betas / dim,
+            poss / dim,
+            (poss + betas) / dim,
+            betas / BETA_REF,
+            (poss + betas / 2.0) / dim,
+        ],
         axis=1,
     ).astype(np.float32)
 
     t = lambda x, dt: torch.as_tensor(x, dtype=dt, device=device)
 
-    # 按 beta 分组 -> 极值池化用（每个唯一 beta 一次 max_pool2d）
     groups = {}
     for k, (b, p) in enumerate(al):
         groups.setdefault(b, ([], []))
@@ -197,10 +231,14 @@ def build_action_spec(dim, device):
     return {
         "action_list": al,
         "num_actions": len(al),
-        "r0": t(r0, torch.long), "r1": t(r1, torch.long),
-        "c0": t(r0, torch.long), "c1": t(r1, torch.long),
-        "pos": t(poss, torch.long), "end_idx": t(end_idx, torch.long),
-        "area": t(area, torch.float32), "emb": t(emb, torch.float32),
+        "r0": t(r0, torch.long),
+        "r1": t(r1, torch.long),
+        "c0": t(r0, torch.long),
+        "c1": t(r1, torch.long),
+        "pos": t(poss, torch.long),
+        "end_idx": t(end_idx, torch.long),
+        "area": t(area, torch.float32),
+        "emb": t(emb, torch.float32),
         "beta_groups": beta_groups,
     }
 
@@ -211,7 +249,11 @@ def build_action_spec(dim, device):
 class NoisyLinear(nn.Module):
     def __init__(self, in_features, out_features, std_init=1.0):
         super().__init__()
-        self.in_features, self.out_features, self.std_init = in_features, out_features, std_init
+        self.in_features, self.out_features, self.std_init = (
+            in_features,
+            out_features,
+            std_init,
+        )
         self.weight_mu = nn.Parameter(torch.empty(out_features, in_features))
         self.weight_sigma = nn.Parameter(torch.empty(out_features, in_features))
         self.register_buffer("weight_epsilon", torch.empty(out_features, in_features))
@@ -253,8 +295,10 @@ class GSEncoder(nn.Module):
     def __init__(self, out_ch=GS_EMB):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Conv1d(1, out_ch, 5, padding=2), nn.LeakyReLU(0.01),
-            nn.Conv1d(out_ch, out_ch, 5, padding=2), nn.LeakyReLU(0.01),
+            nn.Conv1d(1, out_ch, 5, padding=2),
+            nn.LeakyReLU(0.01),
+            nn.Conv1d(out_ch, out_ch, 5, padding=2),
+            nn.LeakyReLU(0.01),
         )
 
     def forward(self, gs):
@@ -264,15 +308,21 @@ class GSEncoder(nn.Module):
 class FiLMAxialBlock(nn.Module):
     def __init__(self, c, ctx_dim, dilation):
         super().__init__()
-        self.col = nn.Conv2d(c, c, (3, 1), padding=(dilation, 0), dilation=(dilation, 1))
-        self.row = nn.Conv2d(c, c, (1, 3), padding=(0, dilation), dilation=(1, dilation))
+        self.col = nn.Conv2d(
+            c, c, (3, 1), padding=(dilation, 0), dilation=(dilation, 1)
+        )
+        self.row = nn.Conv2d(
+            c, c, (1, 3), padding=(0, dilation), dilation=(1, dilation)
+        )
         self.pw = nn.Conv2d(2 * c, c, 1)
         self.film = nn.Linear(ctx_dim, 2 * c)
 
     def forward(self, x, ctx):
         h = self.pw(torch.cat([self.col(x), self.row(x)], dim=1))
         gamma, beta = self.film(ctx).chunk(2, dim=1)
-        h = (1.0 + gamma).unsqueeze(-1).unsqueeze(-1) * h + beta.unsqueeze(-1).unsqueeze(-1)
+        h = (1.0 + gamma).unsqueeze(-1).unsqueeze(-1) * h + beta.unsqueeze(
+            -1
+        ).unsqueeze(-1)
         return x + F.leaky_relu(h, 0.01)
 
 
@@ -285,33 +335,36 @@ def _integral_region_mean(H, r0, r1, c0, c1, area):
 
 def _region_max(H, spec):
     """区域极值池化：每个唯一 beta 做一次 max_pool2d(kernel=beta, stride=1)，
-    再取对角位置 (p,p)。H:[B,C,D,D] -> [B,C,A]。唯一 beta 只有 ~7 个，开销很小。"""
+    再取对角位置 (p,p)。H:[B,C,D,D] -> [B,C,A]。"""
     B, C, D, _ = H.shape
     out = H.new_empty(B, C, spec["num_actions"])
     for b, (idx, pos) in spec["beta_groups"].items():
         k = min(b, D)
-        pooled = F.max_pool2d(H, kernel_size=k, stride=1)   # [B,C,D-k+1,D-k+1]
+        pooled = F.max_pool2d(H, kernel_size=k, stride=1)
         out[:, :, idx] = pooled[:, :, pos, pos]
     return out
 
 
 class DimAgnosticQNet(nn.Module):
-    def __init__(self, num_globals=NUM_GLOBALS, c=FEAT_C, gs_emb=GS_EMB, ctx_dim=CTX_DIM):
+    def __init__(
+        self, num_globals=NUM_GLOBALS, c=FEAT_C, gs_emb=GS_EMB, ctx_dim=CTX_DIM
+    ):
         super().__init__()
         self.c = c
         self.gs_encoder = GSEncoder(gs_emb)
         in_ch = 1 + 3 * gs_emb + 2
         self.stem = nn.Conv2d(in_ch, c, 1)
         self.global_mlp = nn.Sequential(
-            nn.Linear(num_globals, 64), nn.LeakyReLU(0.01),
-            nn.Linear(64, ctx_dim), nn.LeakyReLU(0.01),
+            nn.Linear(num_globals, 64),
+            nn.LeakyReLU(0.01),
+            nn.Linear(64, ctx_dim),
+            nn.LeakyReLU(0.01),
         )
         self.blocks = nn.ModuleList([FiLMAxialBlock(c, ctx_dim, d) for d in DILATIONS])
 
         self.value_mlp = nn.Sequential(
             NoisyLinear(2 * c + ctx_dim, 128), nn.LeakyReLU(0.01), NoisyLinear(128, 1)
         )
-        # 区域均值 + 区域极值 -> 2*c
         act_feat = 2 * c + ACT_EMB + GS_LOC + ctx_dim
         self.action_mlp = nn.Sequential(
             NoisyLinear(act_feat, 128), nn.LeakyReLU(0.01), NoisyLinear(128, 1)
@@ -334,13 +387,14 @@ class DimAgnosticQNet(nn.Module):
         for blk in self.blocks:
             x = blk(x, ctx)
 
-        # Value：全局 mean + max + ctx（组合权重交给 MLP 学）
-        value = self.value_mlp(torch.cat([x.mean(dim=(2, 3)), x.amax(dim=(2, 3)), ctx], dim=1))
+        value = self.value_mlp(
+            torch.cat([x.mean(dim=(2, 3)), x.amax(dim=(2, 3)), ctx], dim=1)
+        )
 
-        # Advantage：区域均值 + 区域极值 + 动作嵌入 + 局部 GS + ctx
-        rmean = _integral_region_mean(x, spec["r0"], spec["r1"], spec["c0"], spec["c1"],
-                                      spec["area"]).permute(0, 2, 1)   # [B,A,C]
-        rmax = _region_max(x, spec).permute(0, 2, 1)                    # [B,A,C]
+        rmean = _integral_region_mean(
+            x, spec["r0"], spec["r1"], spec["c0"], spec["c1"], spec["area"]
+        ).permute(0, 2, 1)
+        rmax = _region_max(x, spec).permute(0, 2, 1)
         B, A, _ = rmean.shape
         aemb = spec["emb"].unsqueeze(0).expand(B, A, -1)
         gs_start = gs.gather(1, spec["pos"].unsqueeze(0).expand(B, A))
@@ -380,7 +434,11 @@ class SumTree:
         left = 2 * idx + 1
         if left >= len(self.tree):
             return idx
-        return self._retrieve(left, s) if s <= self.tree[left] else self._retrieve(left + 1, s - self.tree[left])
+        return (
+            self._retrieve(left, s)
+            if s <= self.tree[left]
+            else self._retrieve(left + 1, s - self.tree[left])
+        )
 
     def total(self):
         return self.tree[0]
@@ -424,7 +482,9 @@ class PERBuffer:
             idx, p, data = self.tree.get(s)
             if data is None:
                 idx, p, data = self.tree.get(random.uniform(0, total))
-            prios.append(p); idxs.append(idx); batch.append(data)
+            prios.append(p)
+            idxs.append(idx)
+            batch.append(data)
         probs = np.array(prios) / (self.tree.total() + 1e-10)
         w = (self.tree.n_entries * probs + 1e-10) ** (-self.PER_b)
         w /= w.max()
@@ -458,8 +518,13 @@ class MultiDimReplay:
 # Agent
 # ============================================================
 class DQNAgent:
-    def __init__(self, num_globals=NUM_GLOBALS, batch_size=128,
-                 dims_per_update=3, capacity_per_dim=12000):
+    def __init__(
+        self,
+        num_globals=NUM_GLOBALS,
+        batch_size=128,
+        dims_per_update=3,
+        capacity_per_dim=12000,
+    ):
         self.device = DEVICE
         self.batch_size = batch_size
         self.dims_per_update = dims_per_update
@@ -471,8 +536,12 @@ class DQNAgent:
         self.target_net.load_state_dict(self.q_net.state_dict())
         self.target_net.eval()
 
-        self.optimizer = optim.AdamW(self.q_net.parameters(), lr=6e-5, weight_decay=1e-4)
-        self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer, T_max=2000, eta_min=1e-6)
+        self.optimizer = optim.AdamW(
+            self.q_net.parameters(), lr=6e-5, weight_decay=1e-4
+        )
+        self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer, T_max=2000, eta_min=1e-6
+        )
         self.memory = MultiDimReplay(capacity_per_dim)
         self._spec_cache = {}
 
@@ -490,38 +559,70 @@ class DQNAgent:
         self.q_net.reset_noise()
         for dim, eids in groups.items():
             spec = self.spec(dim)
-            cos = torch.as_tensor(np.stack([state_by_eid[e]["cos"] for e in eids]),
-                                  dtype=torch.float32, device=self.device)
-            gs = torch.as_tensor(np.stack([state_by_eid[e]["gs"] for e in eids]),
-                                 dtype=torch.float32, device=self.device)
-            glob = torch.as_tensor(np.stack([state_by_eid[e]["globals"] for e in eids]),
-                                   dtype=torch.float32, device=self.device)
+            cos = torch.as_tensor(
+                np.stack([state_by_eid[e]["cos"] for e in eids]),
+                dtype=torch.float32,
+                device=self.device,
+            )
+            gs = torch.as_tensor(
+                np.stack([state_by_eid[e]["gs"] for e in eids]),
+                dtype=torch.float32,
+                device=self.device,
+            )
+            glob = torch.as_tensor(
+                np.stack([state_by_eid[e]["globals"] for e in eids]),
+                dtype=torch.float32,
+                device=self.device,
+            )
             with torch.no_grad():
                 greedy = self.q_net(cos, gs, glob, spec).argmax(1).cpu().numpy()
             A = spec["num_actions"]
             for k, e in enumerate(eids):
-                out[e] = random.randint(0, A - 1) if (epsilon > 0 and random.random() < epsilon) else int(greedy[k])
+                out[e] = (
+                    random.randint(0, A - 1)
+                    if (epsilon > 0 and random.random() < epsilon)
+                    else int(greedy[k])
+                )
         return out
 
     def remember(self, dim, s, a, r, ns, done):
-        self.memory.add(dim, (
-            s["cos"].astype(np.float16), s["gs"].astype(np.float16), s["globals"].astype(np.float32),
-            int(a), float(r),
-            ns["cos"].astype(np.float16), ns["gs"].astype(np.float16), ns["globals"].astype(np.float32),
-            float(done),
-        ))
+        self.memory.add(
+            dim,
+            (
+                s["cos"].astype(np.float16),
+                s["gs"].astype(np.float16),
+                s["globals"].astype(np.float32),
+                int(a),
+                float(r),
+                ns["cos"].astype(np.float16),
+                ns["gs"].astype(np.float16),
+                ns["globals"].astype(np.float32),
+                float(done),
+            ),
+        )
 
     def _dim_loss(self, dim):
         buf = self.memory.buffers[dim]
         batch, idxs, isw = buf.sample(self.batch_size)
         spec = self.spec(dim)
-        f32 = lambda arrs: torch.as_tensor(np.stack(arrs).astype(np.float32),
-                                           dtype=torch.float32, device=self.device)
-        cos = f32([b[0] for b in batch]); gs = f32([b[1] for b in batch]); glob = f32([b[2] for b in batch])
-        ncos = f32([b[5] for b in batch]); ngs = f32([b[6] for b in batch]); nglob = f32([b[7] for b in batch])
-        a = torch.as_tensor([b[3] for b in batch], dtype=torch.int64, device=self.device).unsqueeze(1)
-        r = torch.as_tensor([b[4] for b in batch], dtype=torch.float32, device=self.device).unsqueeze(1)
-        d = torch.as_tensor([b[8] for b in batch], dtype=torch.float32, device=self.device).unsqueeze(1)
+        f32 = lambda arrs: torch.as_tensor(
+            np.stack(arrs).astype(np.float32), dtype=torch.float32, device=self.device
+        )
+        cos = f32([b[0] for b in batch])
+        gs = f32([b[1] for b in batch])
+        glob = f32([b[2] for b in batch])
+        ncos = f32([b[5] for b in batch])
+        ngs = f32([b[6] for b in batch])
+        nglob = f32([b[7] for b in batch])
+        a = torch.as_tensor(
+            [b[3] for b in batch], dtype=torch.int64, device=self.device
+        ).unsqueeze(1)
+        r = torch.as_tensor(
+            [b[4] for b in batch], dtype=torch.float32, device=self.device
+        ).unsqueeze(1)
+        d = torch.as_tensor(
+            [b[8] for b in batch], dtype=torch.float32, device=self.device
+        ).unsqueeze(1)
         isw = isw.to(self.device).unsqueeze(1)
 
         with torch.no_grad():
@@ -567,13 +668,16 @@ class DQNAgent:
             "torch": torch.get_rng_state(),
         }
         tmp = path + ".tmp"
-        torch.save({
-            "q_net": self.q_net.state_dict(),
-            "target_net": self.target_net.state_dict(),
-            "optimizer": self.optimizer.state_dict(),
-            "scheduler": self.scheduler.state_dict(),
-            "extra": extra,
-        }, tmp)
+        torch.save(
+            {
+                "q_net": self.q_net.state_dict(),
+                "target_net": self.target_net.state_dict(),
+                "optimizer": self.optimizer.state_dict(),
+                "scheduler": self.scheduler.state_dict(),
+                "extra": extra,
+            },
+            tmp,
+        )
         os.replace(tmp, path)
 
     def load(self, path):
@@ -597,46 +701,71 @@ class DQNAgent:
 
 
 # ============================================================
-# G6K sieve 服务进程（GPU1，一次 CUDA context，逐请求复用）
-# 逻辑照搬 g6k_server.py / g6k_oracle.py。
+# G6K sieve 服务进程（一张物理 GPU，一次 CUDA context，逐请求复用）
 # ============================================================
 def sieve_worker(req_q, resp_conns, helper_dir, worker_id):
     import faulthandler
+
     faulthandler.enable()
-    if helper_dir and helper_dir not in sys.path:
-        sys.path.insert(0, helper_dir)
+
+    # chdir 只改工作目录，不可靠替代模块搜索路径 -> G6K_ROOT 与 helper_dir 都进 sys.path
+    for pth in (G6K_ROOT, helper_dir):
+        if pth and pth not in sys.path:
+            sys.path.insert(0, pth)
+
     try:
-        import g6k_env  # noqa: F401  MUST be first: chdir -> spherical_coding/ 所在目录
+        import g6k_env  # noqa: F401  MUST be first: chdir 到 g6k_env 期望的工作目录
     except Exception as e:
         print(f"[sieve{worker_id}] g6k_env import failed: {e}", flush=True)
 
+    g6k_ok = True
+    IntegerMatrix = Siever = SieverParams = None
     try:
         from fpylll import IntegerMatrix
         from g6k import Siever, SieverParams
+        import g6k
+
+        print(
+            f"[sieve{worker_id}] g6k={getattr(g6k, '__file__', '?')} | "
+            f"CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES')}",
+            flush=True,
+        )
     except Exception as e:
-        print(f"[sieve{worker_id}] g6k unavailable: {e}; all requests -> None", flush=True)
+        g6k_ok = False
+        print(
+            f"[sieve{worker_id}] g6k unavailable: {e}; all requests -> None", flush=True
+        )
+
+    if not g6k_ok:
         while True:
             item = req_q.get()
             if item is None:
                 return
-            resp_conns[item[0]].send(None)
+            env_id, seq, rows = item
+            try:
+                resp_conns[env_id].send((seq, None))
+            except Exception:
+                pass
+        return
 
-    print(f"[sieve{worker_id}] ready on CUDA_VISIBLE_DEVICES="
-          f"{os.environ.get('CUDA_VISIBLE_DEVICES')}", flush=True)
-
+    print(f"[sieve{worker_id}] ready", flush=True)
     n_done, t_busy = 0, 0.0
     while True:
         item = req_q.get()
         if item is None:
             break
-        env_id, rows = item
+        env_id, seq, rows = item
         t0 = time.time()
         coeffs = None
         try:
             A = IntegerMatrix.from_matrix([[int(x) for x in r] for r in rows])
             try:
-                params = SieverParams(threads=SIEVE_THREADS, gpus=1,
-                                      gpu_bucketer=b"bdgl", gpu_triple=False)
+                params = SieverParams(
+                    threads=SIEVE_THREADS,
+                    gpus=1,
+                    gpu_bucketer=b"bdgl",
+                    gpu_triple=False,
+                )
             except Exception:
                 try:
                     params = SieverParams(threads=SIEVE_THREADS)
@@ -654,32 +783,103 @@ def sieve_worker(req_q, resp_conns, helper_dir, worker_id):
                 if best[2] is not None and len(best[2]) > 0:
                     coeffs = [int(x) for x in best[2]]
         except Exception as e:
-            print(f"[sieve{worker_id}] fail (env{env_id}, beta={len(rows)}): {e}", flush=True)
+            print(
+                f"[sieve{worker_id}] fail (env{env_id}, beta={len(rows)}): {e}",
+                flush=True,
+            )
             coeffs = None
 
         try:
-            resp_conns[env_id].send(coeffs)
+            resp_conns[env_id].send((seq, coeffs))
         except Exception:
             pass
         n_done += 1
         t_busy += time.time() - t0
         if n_done % 50 == 0:
-            print(f"[sieve{worker_id}] served {n_done}, avg {t_busy / n_done:.2f}s/req", flush=True)
+            print(
+                f"[sieve{worker_id}] served {n_done}, avg {t_busy / n_done:.2f}s/req",
+                flush=True,
+            )
+
+
+def _g6k_probe(conn, helper_dir):
+    """启动前自检子进程：sieve 角色下导入 g6k，报告 __file__ / GPU 能力。"""
+    info = {"ok": False, "cuda_visible": os.environ.get("CUDA_VISIBLE_DEVICES")}
+    try:
+        for pth in (G6K_ROOT, helper_dir):
+            if pth and pth not in sys.path:
+                sys.path.insert(0, pth)
+        try:
+            import g6k_env  # noqa
+        except Exception as e:
+            info["g6k_env_warn"] = repr(e)
+        import g6k
+        from g6k import Siever, SieverParams
+
+        info["g6k_file"] = getattr(g6k, "__file__", "?")
+        try:
+            SieverParams(threads=1, gpus=1, gpu_bucketer=b"bdgl", gpu_triple=False)
+            info["gpu_params_ok"] = True
+        except Exception as e:
+            info["gpu_params_ok"] = False
+            info["gpu_params_warn"] = repr(e)
+        info["has_gpu_sieve"] = hasattr(Siever, "gpu_sieve")
+        info["ok"] = True
+    except Exception as e:
+        info["error"] = repr(e)
+    try:
+        conn.send(info)
+    except Exception:
+        pass
+    conn.close()
+
+
+def validate_g6k(helper_dir, gpu, timeout=180):
+    """在启动 62 个 env 之前单独验证 g6k 可用性（含 GPU 能力）。"""
+    parent_conn, child_conn = mp.Pipe()
+    os.environ["A10_ROLE"] = "sieve"
+    os.environ["A10_SIEVE_GPU"] = str(gpu)
+    p = mp.Process(target=_g6k_probe, args=(child_conn, helper_dir), daemon=True)
+    p.start()
+    os.environ["A10_ROLE"] = "main"
+    os.environ.pop("A10_SIEVE_GPU", None)
+    child_conn.close()
+    info = None
+    if parent_conn.poll(timeout):
+        try:
+            info = parent_conn.recv()
+        except Exception:
+            info = None
+    p.join(timeout=10)
+    if p.is_alive():
+        p.terminate()
+    return info
 
 
 class SieveClient:
-    """env worker 侧的同步客户端：dump_block -> 请求 -> 等结果。"""
+    """env worker 侧同步客户端：dump_block -> 请求 -> 按 seq 对齐等结果。
+    seq 对齐：超时返回 None 后，那次请求的迟到响应会被下次调用识别并丢弃，
+    避免把上一个 block 的系数错插到当前 block（会静默破坏矩阵）。"""
 
     def __init__(self, env_id, req_q, resp_conn):
         self.env_id = env_id
         self.req_q = req_q
         self.resp_conn = resp_conn
+        self.seq = 0
 
     def sieve_block(self, rows):
-        self.req_q.put((self.env_id, rows))
-        if self.resp_conn.poll(SIEVE_TIMEOUT_S):
-            return self.resp_conn.recv()
-        return None  # 超时 -> 上层回退 ENUM
+        self.seq += 1
+        my_seq = self.seq
+        self.req_q.put((self.env_id, my_seq, rows))
+        deadline = time.time() + SIEVE_TIMEOUT_S
+        while True:
+            remaining = deadline - time.time()
+            if remaining <= 0 or not self.resp_conn.poll(remaining):
+                return None  # 超时 -> 上层回退 ENUM
+            seq, coeffs = self.resp_conn.recv()
+            if seq == my_seq:
+                return coeffs
+            # 否则是此前超时请求的迟到响应，丢弃继续等
 
 
 # ============================================================
@@ -710,11 +910,15 @@ class LatticeEnv:
 
     def _preload(self):
         mat = parse_challenge_file(self.filepath)
-        self.initial_pool_id = my_project_backend.create_matrix_lll(matrix_to_string(mat))
+        self.initial_pool_id = my_project_backend.create_matrix_lll(
+            matrix_to_string(mat)
+        )
         ev = my_project_backend.evaluate_matrix(self.initial_pool_id)
         gs = np.array(ev["gs_log_norms"], dtype=np.float32)
         self.log_vol = float(np.sum(gs))
-        self.log_GH = self.log_vol / self.dim + 0.5 * math.log(self.dim / (2 * math.pi * math.e))
+        self.log_GH = self.log_vol / self.dim + 0.5 * math.log(
+            self.dim / (2 * math.pi * math.e)
+        )
         info = my_project_backend.reduce(self.initial_pool_id, "LLL", 2, 0)
         self.defect_scale = max(abs(float(info["log_prod"] - self.log_vol)), 1.0)
         self.ratio_scale = max(abs(float(gs[0] - self.log_GH)), 1.0)
@@ -753,15 +957,18 @@ class LatticeEnv:
         log_ratio = float(log_b1 - self.log_GH)
 
         gs_norm = np.tanh((gs - self.log_GH) / self.ratio_scale).astype(np.float32)
-        globals_vec = np.array([
-            max_cos,
-            float(np.tanh(log_def / self.defect_scale)),
-            float(np.tanh(log_ratio / self.ratio_scale)),
-            float(np.tanh((gs[0] - gs[-1]) / self.ratio_scale)),
-            float(self.current_step / self.max_steps),
-            float(math.log(self.dim) - math.log(DIM_REF)),
-            float((self.current_step % self.lll_frequency) / self.lll_frequency),
-        ], dtype=np.float32)
+        globals_vec = np.array(
+            [
+                max_cos,
+                float(np.tanh(log_def / self.defect_scale)),
+                float(np.tanh(log_ratio / self.ratio_scale)),
+                float(np.tanh((gs[0] - gs[-1]) / self.ratio_scale)),
+                float(self.current_step / self.max_steps),
+                float(math.log(self.dim) - math.log(DIM_REF)),
+                float((self.current_step % self.lll_frequency) / self.lll_frequency),
+            ],
+            dtype=np.float32,
+        )
         state = {"cos": C, "gs": gs_norm, "globals": globals_vec, "dim": self.dim}
 
         true_ratio = float(math.exp(log_ratio))
@@ -794,7 +1001,8 @@ class LatticeEnv:
         if coeffs:
             try:
                 my_project_backend.insert_coeff_vector(
-                    mid, pos, beta, [str(int(c)) for c in coeffs])
+                    mid, pos, beta, [str(int(c)) for c in coeffs]
+                )
             except Exception:
                 pass
         else:  # sieve 失败/超时 -> ENUM，绝不静默跳过
@@ -807,22 +1015,42 @@ class LatticeEnv:
 
     def step(self, action_idx):
         beta, pos = self.action_list[action_idx]
-        old_logb1, old_maxcos, old_logdef = self._c_logb1, self._c_maxcos, self._c_logdef
+        old_logb1, old_maxcos, old_logdef = (
+            self._c_logb1,
+            self._c_maxcos,
+            self._c_logdef,
+        )
 
         act_info = self._exec_action(beta, pos)
-        do_lll = (self.current_step % self.lll_frequency == self.lll_frequency - 1
-                  or self.current_step >= self.max_steps - 1)
-        self.last_info = my_project_backend.reduce(self.current_pool_id, "LLL", 2, 0) if do_lll else act_info
+        do_lll = (
+            self.current_step % self.lll_frequency == self.lll_frequency - 1
+            or self.current_step >= self.max_steps - 1
+        )
+        self.last_info = (
+            my_project_backend.reduce(self.current_pool_id, "LLL", 2, 0)
+            if do_lll
+            else act_info
+        )
 
         self.current_step += 1
         done = self.current_step >= self.max_steps
         if done:
-            my_project_backend.reduce(self.current_pool_id, "LOCAL_BKZ", min(self.dim, 40), 0)
-            self.last_info = my_project_backend.reduce(self.current_pool_id, "LLL", 2, 0)
+            my_project_backend.reduce(
+                self.current_pool_id, "LOCAL_BKZ", min(self.dim, 40), 0
+            )
+            self.last_info = my_project_backend.reduce(
+                self.current_pool_id, "LLL", 2, 0
+            )
 
         old_best, old_ep_best = self.best_ratio, self.current_ep_best_ratio
-        state, new_logb1, new_ratio, new_maxcos, _, new_logdef = self._build_state(self.last_info)
-        self._c_logb1, self._c_maxcos, self._c_logdef = new_logb1, new_maxcos, new_logdef
+        state, new_logb1, new_ratio, new_maxcos, _, new_logdef = self._build_state(
+            self.last_info
+        )
+        self._c_logb1, self._c_maxcos, self._c_logdef = (
+            new_logb1,
+            new_maxcos,
+            new_logdef,
+        )
 
         R_ratio = old_logb1 - new_logb1
         R_orth = old_maxcos - new_maxcos
@@ -835,7 +1063,12 @@ class LatticeEnv:
         else:
             w, al, gr, cw = self.ratio_w, self.alpha, self.gamma_r, self.cost_w
 
-        reward = w * R_ratio + al * R_orth + gr * R_def - cw * (beta / max(b for b, _ in self.action_list))
+        reward = (
+            w * R_ratio
+            + al * R_orth
+            + gr * R_def
+            - cw * (beta / max(b for b, _ in self.action_list))
+        )
 
         if new_ratio < old_best:
             reward += 5.0
@@ -859,16 +1092,25 @@ class LatticeEnv:
             reward -= self.repeat_penalty_base * (rc - 1) ** 1.5
 
         reward = float(np.clip(reward, -5.0, 50.0))
-        info = {"beta": beta, "pos": pos, "b1_GH_ratio": new_ratio, "step": self.current_step}
+        info = {
+            "beta": beta,
+            "pos": pos,
+            "b1_GH_ratio": new_ratio,
+            "step": self.current_step,
+        }
         return state, reward, done, info
 
     def get_best_payload(self):
         return {
-            "dim": self.dim, "seed_id": self.seed_id,
+            "dim": self.dim,
+            "seed_id": self.seed_id,
             "seed_file": os.path.basename(self.filepath),
-            "ratio": self.best_ratio, "defect": self.best_defect,
-            "max_cos": self.best_max_cos, "min_cos": self.best_min_cos,
-            "vector": self.best_vector, "basis": self.best_basis,
+            "ratio": self.best_ratio,
+            "defect": self.best_defect,
+            "max_cos": self.best_max_cos,
+            "min_cos": self.best_min_cos,
+            "vector": self.best_vector,
+            "basis": self.best_basis,
             "episode": self.best_episode,
         }
 
@@ -878,7 +1120,11 @@ class LatticeEnv:
 # ============================================================
 def env_worker(remote, parent_remote, filepath, env_id, sieve_req_q, sieve_resp_conn):
     parent_remote.close()
-    client = SieveClient(env_id, sieve_req_q, sieve_resp_conn) if sieve_req_q is not None else None
+    client = (
+        SieveClient(env_id, sieve_req_q, sieve_resp_conn)
+        if sieve_req_q is not None
+        else None
+    )
     env = LatticeEnv(filepath, env_id=env_id, sieve_client=client)
     try:
         while True:
@@ -902,7 +1148,7 @@ def env_worker(remote, parent_remote, filepath, env_id, sieve_req_q, sieve_resp_
 
 
 class SubprocVecEnv:
-    def __init__(self, files, envs_per_seed=1, use_sieve=True):
+    def __init__(self, files, envs_per_seed=1, use_sieve=True, helper_dir=""):
         self.files = [f for f in files for _ in range(envs_per_seed)]
         self.num_envs = len(self.files)
         self.env_dims = [parse_dim_seed(f)[0] for f in self.files]
@@ -918,30 +1164,42 @@ class SubprocVecEnv:
                 resp_recv.append(r)
                 resp_send.append(s)
             for wid in range(NUM_SIEVE_WORKERS):
-                os.environ["A11_ROLE"] = "sieve"
-                os.environ["A11_SIEVE_GPU"] = SIEVE_GPUS[wid % len(SIEVE_GPUS)]
-                p = mp.Process(target=sieve_worker,
-                               args=(self.sieve_req_q, resp_send, G6K_HELPER_DIR, wid),
-                               daemon=True)
+                os.environ["A10_ROLE"] = "sieve"
+                os.environ["A10_SIEVE_GPU"] = SIEVE_GPUS[wid % len(SIEVE_GPUS)]
+                p = mp.Process(
+                    target=sieve_worker,
+                    args=(self.sieve_req_q, resp_send, helper_dir, wid),
+                    daemon=True,
+                )
                 p.start()
                 self.sieve_procs.append(p)
-            os.environ["A11_ROLE"] = "main"
-            os.environ.pop("A11_SIEVE_GPU", None)
+            os.environ["A10_ROLE"] = "main"
+            os.environ.pop("A10_SIEVE_GPU", None)
 
         # ---- env workers（CPU-only）----
-        self.remotes, self.work_remotes = zip(*[mp.Pipe() for _ in range(self.num_envs)])
-        os.environ["A11_ROLE"] = "env"
+        self.remotes, self.work_remotes = zip(
+            *[mp.Pipe() for _ in range(self.num_envs)]
+        )
+        os.environ["A10_ROLE"] = "env"
         self.processes = []
-        for eid, (wr, r, f) in enumerate(zip(self.work_remotes, self.remotes, self.files)):
+        for eid, (wr, r, f) in enumerate(
+            zip(self.work_remotes, self.remotes, self.files)
+        ):
             p = mp.Process(
                 target=env_worker,
-                args=(wr, r, f, eid, self.sieve_req_q,
-                      resp_recv[eid] if use_sieve else None),
+                args=(
+                    wr,
+                    r,
+                    f,
+                    eid,
+                    self.sieve_req_q,
+                    resp_recv[eid] if use_sieve else None,
+                ),
                 daemon=True,
             )
             p.start()
             self.processes.append(p)
-        os.environ["A11_ROLE"] = "main"
+        os.environ["A10_ROLE"] = "main"
         for wr in self.work_remotes:
             wr.close()
 
@@ -980,20 +1238,24 @@ class SubprocVecEnv:
 
 
 # ============================================================
-# 结果保存（a9 逻辑：每 dim/seed 一个 txt，initial + new-best 追加 + summary）
+# 结果保存
 # ============================================================
 def save_seed_result(results_dir, info, is_update):
     fp = os.path.join(results_dir, f"dim{info['dim']}_seed{info['seed_id']}.txt")
     with open(fp, "a" if is_update else "w") as f:
         if not is_update:
-            f.write("=" * 60 + f"\n Dim={info['dim']} Seed={info['seed_id']} "
-                    f"File={info['seed_file']}\n" + "=" * 60 + "\n--- Initial ---\n")
+            f.write(
+                "=" * 60 + f"\n Dim={info['dim']} Seed={info['seed_id']} "
+                f"File={info['seed_file']}\n" + "=" * 60 + "\n--- Initial ---\n"
+            )
         else:
             f.write(f"\n--- New Best (Episode {info['episode']}) ---\n")
         f.write(f"  Ratio: {info['ratio']:.8f}\n")
         if info.get("defect") is not None:
-            f.write(f"  Defect: {info['defect']:.8f}  MaxCos: {info['max_cos']:.6f}  "
-                    f"MinCos: {info['min_cos']:.6f}\n")
+            f.write(
+                f"  Defect: {info['defect']:.8f}  MaxCos: {info['max_cos']:.6f}  "
+                f"MinCos: {info['min_cos']:.6f}\n"
+            )
         f.write(f"  b1 = {info.get('vector')}\n")
 
 
@@ -1005,16 +1267,26 @@ def save_final_summary(results_dir, all_infos, goal=1.05):
         f.write(f"Reached: {len(reached)}/{len(all_infos)}\n\n")
         for info in sorted(all_infos, key=lambda x: (x["dim"], x["ratio"])):
             st = "✓" if info["ratio"] < goal else " "
-            f.write(f"  [{st}] dim{info['dim']:3d} seed{info['seed_id']:2d}: "
-                    f"{info['ratio']:.6f} (ep {info.get('episode','?')})\n")
+            f.write(
+                f"  [{st}] dim{info['dim']:3d} seed{info['seed_id']:2d}: "
+                f"{info['ratio']:.6f} (ep {info.get('episode', '?')})\n"
+            )
 
 
 # ============================================================
-# 训练主循环（异步 env + 分桶推理，同 a10）
+# 训练主循环
 # ============================================================
-def train_all(vec_env, agent, results_dir, total_updates=200000,
-              train_every=4, log_every=4000, save_every=8000,
-              goal_threshold=1.05, resume_extra=None):
+def train_all(
+    vec_env,
+    agent,
+    results_dir,
+    total_updates=200000,
+    train_every=4,
+    log_every=4000,
+    save_every=8000,
+    goal_threshold=1.05,
+    resume_extra=None,
+):
     os.makedirs(results_dir, exist_ok=True)
     num_envs = vec_env.num_envs
     dims = vec_env.env_dims
@@ -1089,16 +1361,24 @@ def train_all(vec_env, agent, results_dir, total_updates=200000,
             best_min = min(global_best.values()) if global_best else float("inf")
             history["best_min"].append(best_min)
             rate = env_steps / max(1e-6, time.time() - t_start)
-            _status(f"upd {updates}/{total_updates} | ε{eps_now():.3f} | "
-                    f"loss{history['loss'][-1] if history['loss'] else 0:.4f} | "
-                    f"bestmin {best_min:.6f} | reached {reached}/{len(global_best)} | "
-                    f"{rate:.0f} env-steps/s")
+            _status(
+                f"upd {updates}/{total_updates} | ε{eps_now():.3f} | "
+                f"loss{history['loss'][-1] if history['loss'] else 0:.4f} | "
+                f"bestmin {best_min:.6f} | reached {reached}/{len(global_best)} | "
+                f"{rate:.0f} env-steps/s"
+            )
 
         if env_steps % save_every < len(ready):
-            agent.save(os.path.join(results_dir, "shared_resume.pth"),
-                       extra={"updates": updates, "env_steps": env_steps,
-                              "global_best": global_best,
-                              "global_info": global_info, "history": history})
+            agent.save(
+                os.path.join(results_dir, "shared_resume.pth"),
+                extra={
+                    "updates": updates,
+                    "env_steps": env_steps,
+                    "global_best": global_best,
+                    "global_info": global_info,
+                    "history": history,
+                },
+            )
 
     for b in vec_env.get_bests():
         key = (b["dim"], b["seed_id"])
@@ -1108,10 +1388,17 @@ def train_all(vec_env, agent, results_dir, total_updates=200000,
     save_final_summary(results_dir, list(global_info.values()), goal_threshold)
 
     plt.figure(figsize=(12, 5))
-    plt.subplot(1, 2, 1); plt.plot(history["loss"]); plt.title("loss"); plt.grid(True)
-    plt.subplot(1, 2, 2); plt.plot(history["best_min"]); plt.axhline(goal_threshold, color="r", ls="--")
-    plt.title("global best ratio"); plt.grid(True)
-    plt.savefig(os.path.join(results_dir, "training.png")); plt.close()
+    plt.subplot(1, 2, 1)
+    plt.plot(history["loss"])
+    plt.title("loss")
+    plt.grid(True)
+    plt.subplot(1, 2, 2)
+    plt.plot(history["best_min"])
+    plt.axhline(goal_threshold, color="r", ls="--")
+    plt.title("global best ratio")
+    plt.grid(True)
+    plt.savefig(os.path.join(results_dir, "training.png"))
+    plt.close()
     print("\nDone. Summary ->", os.path.join(results_dir, "summary.txt"))
     return history
 
@@ -1122,8 +1409,10 @@ def train_all(vec_env, agent, results_dir, total_updates=200000,
 def gather_files(dataset_dir, dims, seeds_per_dim=2):
     files = []
     for dim in dims:
-        fs = sorted(glob.glob(os.path.join(dataset_dir, f"svpchallengedim{dim}seed*.txt")),
-                    key=lambda p: parse_dim_seed(p)[1])
+        fs = sorted(
+            glob.glob(os.path.join(dataset_dir, f"svpchallengedim{dim}seed*.txt")),
+            key=lambda p: parse_dim_seed(p)[1],
+        )
         if seeds_per_dim:
             fs = fs[:seeds_per_dim]
         files.extend(fs)
@@ -1138,30 +1427,89 @@ if __name__ == "__main__":
 
     print("Learner device:", DEVICE)
     n_gpu = torch.cuda.device_count()
-    print(f"Visible GPUs (learner): {n_gpu} | sieve pinned to physical GPU {SIEVE_GPUS}")
+    print(
+        f"Visible GPUs (learner): {n_gpu} | learner -> physical GPU0 | "
+        f"sieve {NUM_SIEVE_WORKERS} workers spread over GPUs {sorted(set(SIEVE_GPUS))}"
+    )
+    print(f"backend: {getattr(my_project_backend, '__file__', '?')}")
+    print(f"PROJECT_ROOT={PROJECT_ROOT}  G6K_ROOT={G6K_ROOT}")
 
     DATASET_DIR = os.path.join(PROJECT_ROOT, "dataset")
-    RESULTS_DIR = os.path.join(PROJECT_ROOT, "results", "a11_shared")
+    RESULTS_DIR = os.path.join(
+        PROJECT_ROOT, "results", "a10_shared"
+    )  # a11 checkpoint 不会被自动加载
     os.makedirs(RESULTS_DIR, exist_ok=True)
+
+    # ---- 确定 g6k_env.py 目录（不猜测：显式 > 搜索 PROJECT_ROOT）----
+    helper_dir = discover_helper_dir(G6K_HELPER_DIR, PROJECT_ROOT)
+    print(f"G6K_HELPER_DIR={helper_dir or '(未找到 g6k_env.py)'}")
+
+    # ---- 启动前单独验证 g6k（GPU 能力），避免起 62 个 env 后才发现不可用 ----
+    probe = validate_g6k(helper_dir, SIEVE_GPUS[0])
+    print(f"[g6k probe] {probe}")
+    if not probe or not probe.get("ok"):
+        if os.environ.get("A10_ALLOW_NO_SIEVE") == "1":
+            print(
+                "[warn] g6k 不可用，A10_ALLOW_NO_SIEVE=1 -> sieve 关闭，beta>=40 回退 ENUM"
+            )
+            USE_SIEVE = False
+        else:
+            print(
+                "[fatal] g6k 自检失败。修好 g6k / 路径后重试；"
+                "或设 A10_ALLOW_NO_SIEVE=1 用纯 CPU-ENUM 跑。"
+            )
+            sys.exit(1)
+    else:
+        USE_SIEVE = True
+        if not probe.get("gpu_params_ok"):
+            print(
+                "[warn] SieverParams(gpus=1,bdgl) 不可用 -> 将回退 CPU bgj1（sieve 会很慢）"
+            )
 
     DIMS_TO_RUN = list(range(50, 81))
     files = gather_files(DATASET_DIR, DIMS_TO_RUN, seeds_per_dim=2)
     if not files:
-        print("No dataset files found."); sys.exit(1)
+        print("No dataset files found in", DATASET_DIR)
+        sys.exit(1)
 
-    vec_env = SubprocVecEnv(files, envs_per_seed=1, use_sieve=True)
-    print(f"Total envs: {vec_env.num_envs} | dims: {sorted(set(vec_env.env_dims))} | "
-          f"sieve workers: {len(vec_env.sieve_procs)}")
+    vec_env = SubprocVecEnv(
+        files, envs_per_seed=1, use_sieve=USE_SIEVE, helper_dir=helper_dir
+    )
+    print(
+        f"Total envs: {vec_env.num_envs} | dims: {sorted(set(vec_env.env_dims))} | "
+        f"sieve workers: {len(vec_env.sieve_procs)}"
+    )
 
-    agent = DQNAgent(num_globals=NUM_GLOBALS, batch_size=128,
-                     dims_per_update=3, capacity_per_dim=12000)
+    agent = DQNAgent(
+        num_globals=NUM_GLOBALS,
+        batch_size=128,
+        dims_per_update=3,
+        capacity_per_dim=12000,
+    )
 
     resume_extra = agent.load(os.path.join(RESULTS_DIR, "shared_resume.pth"))
     if resume_extra:
-        print("Resumed shared checkpoint.")
+        print("Resumed a10 shared checkpoint.")
 
-    train_all(vec_env, agent, RESULTS_DIR,
-              total_updates=200000, train_every=4,
-              log_every=4000, save_every=8000,
-              goal_threshold=0.85, resume_extra=resume_extra)
+    train_all(
+        vec_env,
+        agent,
+        RESULTS_DIR,
+        total_updates=200000,
+        train_every=4,
+        log_every=4000,
+        save_every=8000,
+        goal_threshold=0.85,
+        resume_extra=resume_extra,
+    )
     vec_env.close()
+
+# ============================================================
+# 调优备注（4×48G）：
+#  1. watch -n1 nvidia-smi 看 4 卡 GPU-Util。都没打满 -> 加 sieve context：
+#     NUM_SIEVE_WORKERS=12, SIEVE_GPUS=["0","1","2","3"]*3。
+#  2. 若 learner 训练明显被拖慢（loss 更新变稀）-> 给 GPU0 减负：
+#     NUM_SIEVE_WORKERS=7, SIEVE_GPUS=["1","2","3","0","1","2","3"]（GPU0 只 1 个陪 learner）。
+#  3. CPU 别超订：62 env(OMP=1) + 8 sieve(各 SIEVE_THREADS=2)=78 线程 + main(4)。
+#     核数不够就降 seeds_per_dim 或 SIEVE_THREADS。
+# ============================================================
