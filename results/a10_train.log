@@ -1,0 +1,56 @@
+Learner device: cuda:0
+Visible GPUs (learner): 4 | learner -> physical GPU0 | sieve 8 workers spread over GPUs ['0', '1', '2', '3']
+backend: /home/amax/projects/DRL/my_project_backend.cpython-313-x86_64-linux-gnu.so
+PROJECT_ROOT=/home/amax/projects/DRL  G6K_ROOT=/home/amax/workspace/builds/g6k
+G6K_HELPER_DIR=/home/amax/projects/DRL/scripts/analyse
+[g6k_env] chdir -> /home/amax/workspace/builds/g6k
+[g6k probe] {'ok': True, 'cuda_visible': '0', 'g6k_file': '/home/amax/workspace/builds/g6k/g6k/__init__.py', 'gpu_params_ok': True, 'has_gpu_sieve': True}
+[g6k_env] chdir -> /home/amax/workspace/builds/g6k
+[sieve4] g6k=/home/amax/workspace/builds/g6k/g6k/__init__.py | CUDA_VISIBLE_DEVICES=0
+[sieve4] ready
+[g6k_env] chdir -> /home/amax/workspace/builds/g6k
+[sieve3] g6k=/home/amax/workspace/builds/g6k/g6k/__init__.py | CUDA_VISIBLE_DEVICES=3
+[sieve3] ready
+[g6k_env] chdir -> /home/amax/workspace/builds/g6k
+[sieve1] g6k=/home/amax/workspace/builds/g6k/g6k/__init__.py | CUDA_VISIBLE_DEVICES=1
+[sieve1] ready
+[g6k_env] chdir -> /home/amax/workspace/builds/g6k
+[sieve2] g6k=/home/amax/workspace/builds/g6k/g6k/__init__.py | CUDA_VISIBLE_DEVICES=2
+[sieve2] ready
+[g6k_env] chdir -> /home/amax/workspace/builds/g6k
+[sieve7] g6k=/home/amax/workspace/builds/g6k/g6k/__init__.py | CUDA_VISIBLE_DEVICES=3
+[sieve7] ready
+[g6k_env] chdir -> /home/amax/workspace/builds/g6k
+[sieve5] g6k=/home/amax/workspace/builds/g6k/g6k/__init__.py | CUDA_VISIBLE_DEVICES=1
+[sieve5] ready
+[g6k_env] chdir -> /home/amax/workspace/builds/g6k
+[sieve6] g6k=/home/amax/workspace/builds/g6k/g6k/__init__.py | CUDA_VISIBLE_DEVICES=2
+[sieve6] ready
+[g6k_env] chdir -> /home/amax/workspace/builds/g6k
+[sieve0] g6k=/home/amax/workspace/builds/g6k/g6k/__init__.py | CUDA_VISIBLE_DEVICES=0
+[sieve0] ready
+Total envs: 62 | dims: [50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80] | sieve workers: 8
+Traceback (most recent call last):
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1494, in <module>
+    train_all(
+    ~~~~~~~~~^
+        vec_env,
+        ^^^^^^^^
+    ...<7 lines>...
+        resume_extra=resume_extra,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1327, in train_all
+    obs, rew, done, info = vec_env.recv_one(e)
+                           ~~~~~~~~~~~~~~~~^^^
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1215, in recv_one
+    return self.remotes[eid].recv()
+           ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/connection.py", line 251, in recv
+    buf = self._recv_bytes()
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/connection.py", line 431, in _recv_bytes
+    buf = self._recv(4)
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/connection.py", line 400, in _recv
+    raise EOFError
+EOFError

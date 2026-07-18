@@ -82,7 +82,6 @@ if command -v nvcc >/dev/null 2>&1; then
     nvcc \
         -O3 \
         -std=c++17 \
-        -arch=sm_89 \
         -Xcompiler=-fPIC \
         -c "$SRC_DIR/lattice_cuda.cu" \
         -o "$BUILD_DIR/lattice_cuda.o"
@@ -193,4 +192,13 @@ for root in "${SEARCH_ROOTS[@]}"; do
         -print
 done
 
-echo ">> 构建完成：$FINAL_MODULE"
+echo ">> 构建完成：$FINAL_MODULE"  echo ">> 未检测到 nvcc, 编译 CPU-only 版本"
+  $CXX $COMMON $PYINC $FPLLL_CFLAGS \
+    -c "$SRC_DIR/lattice_backend.cpp" -o lattice_backend.o
+  $CXX -shared lattice_backend.o -o "$OUT_MODULE" \
+    $FPLLL_LIBS -lgmp -lmpfr -lpthread
+fi
+
+rm -f lattice_backend.o lattice_cuda.o
+echo ">> 已生成 $OUT_MODULE"
+#bash build.sh 直接敲这行

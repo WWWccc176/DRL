@@ -1,0 +1,306 @@
+Learner device: cuda:0
+Visible GPUs (learner): 4 | learner -> physical GPU0 | sieve 4 workers over GPUs ['0', '1', '2', '3']
+backend: /home/amax/projects/DRL/my_project_backend.cpython-313-x86_64-linux-gnu.so
+PROJECT_ROOT=/home/amax/projects/DRL  G6K_ROOT=/home/amax/workspace/builds/g6k
+G6K_HELPER_DIR=/home/amax/projects/DRL/scripts/analyse
+[g6k_env] chdir -> /home/amax/workspace/builds/g6k
+[g6k probe] {'ok': True, 'cuda_visible': '0', 'g6k_file': '/home/amax/workspace/builds/g6k/g6k/__init__.py', 'gpu_params_ok': True, 'has_gpu_sieve': True}
+env 组成（共 48，MAX_ENVS=48）: {50: 2, 51: 2, 52: 2, 53: 2, 54: 2, 55: 2, 56: 2, 57: 2, 58: 2, 59: 2, 60: 2, 61: 2, 62: 2, 63: 2, 64: 2, 65: 2, 66: 2, 67: 1, 68: 1, 69: 1, 70: 1, 71: 1, 72: 1, 73: 1, 74: 1, 75: 1, 76: 1, 77: 1, 78: 1, 79: 1, 80: 1}
+Total envs: 48 | dims: [50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80] | sieve workers: 4
+[g6k_env] chdir -> /home/amax/workspace/builds/g6k
+[sieve2] g6k=/home/amax/workspace/builds/g6k/g6k/__init__.py | CUDA_VISIBLE_DEVICES=2
+[sieve2] ready
+[g6k_env] chdir -> /home/amax/workspace/builds/g6k
+[sieve3] g6k=/home/amax/workspace/builds/g6k/g6k/__init__.py | CUDA_VISIBLE_DEVICES=3
+[sieve3] ready
+[g6k_env] chdir -> /home/amax/workspace/builds/g6k
+[sieve1] g6k=/home/amax/workspace/builds/g6k/g6k/__init__.py | CUDA_VISIBLE_DEVICES=1
+[sieve1] ready
+[g6k_env] chdir -> /home/amax/workspace/builds/g6k
+[sieve0] g6k=/home/amax/workspace/builds/g6k/g6k/__init__.py | CUDA_VISIBLE_DEVICES=0
+[sieve0] ready
+[K  ★ dim50 seed0 best=1.42075354
+[K  ★ dim50 seed1 best=1.45440555
+[K  ★ dim51 seed0 best=1.18622590
+[K  ★ dim51 seed1 best=1.49032803
+[K  ★ dim52 seed0 best=1.61271051
+[K  ★ dim52 seed1 best=1.61955573
+[K  ★ dim53 seed1 best=1.41465478
+[K  ★ dim54 seed1 best=1.40543748
+[K  ★ dim55 seed0 best=1.64957869
+[K  ★ dim55 seed1 best=1.70214525
+[K  ★ dim56 seed0 best=1.40476179
+[K  ★ dim56 seed1 best=1.44685023
+[K  ★ dim57 seed0 best=1.70266993
+[K  ★ dim58 seed0 best=1.50869323
+[K  ★ dim59 seed0 best=1.67693288
+[K  ★ dim61 seed0 best=1.54496619
+[K  ★ dim62 seed0 best=1.83557370
+[K  ★ dim62 seed1 best=1.73375707
+[K  ★ dim63 seed1 best=1.62801300
+[K  ★ dim77 seed0 best=1.96162284
+[K  ★ dim53 seed0 best=1.58500172
+Fatal Python error: Segmentation fault
+
+Current thread 0x00007350283a0740 (most recent call first):
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 998 in _exec_action
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1059 in step
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1188 in env_worker
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 108 in run
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 313 in _bootstrap
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 135 in _main
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+[K  ★ dim54 seed0 best=1.82817324
+Fatal Python error: Segmentation fault
+
+Current thread 0x0000730e206f8740 (most recent call first):
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 998 in _exec_action
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1059 in step
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1188 in env_worker
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 108 in run
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 313 in _bootstrap
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 135 in _main
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+Fatal Python error: [K  ★ dim57 seed42 best=1.75741370
+Segmentation fault
+
+Current thread 0x000073a723c03740 (most recent call first):
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 998 in _exec_action
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1059 in step
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1188 in env_worker
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 108 in run
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 313 in _bootstrapFatal Python error: 
+Segmentation fault  File 
+
+"/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.pyCurrent thread 0x", line 135 in _main
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 00006ffd8350a740122 (most recent call first):
+ in spawn_main  File 
+"  File "/home/amax/projects/DRL/scripts/agent/a10.py<string>"", line , line 1 in <module>
+998 in _exec_action
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1059 in step
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 
+Extension modules: numpy._core._multiarray_umath[K  ★ dim58 seed89 best=1.57794023
+1188 in env_worker
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 108 in run
+  File , numpy.linalg._umath_linalg"/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 313 in _bootstrap
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 135 in _main
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>, PIL._imaging", line 1 in <module>
+, kiwisolver._cext[K  ★ dim59 seed6 best=1.72881967
+, torch._C, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fft, torch._C._linalg, torch._C._nested[K  ★ dim60 seed0 best=1.62359005
+, torch._C._nn, torch._C._sparse, torch._C._special, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._pcg64, numpy.random._generator, numpy.random._mt19937, numpy.random._philox[K  ★ dim60 seed1 best=1.48373878
+, numpy.random._sfc64, numpy.random.mtrand (total: 24)
+
+Extension modules: numpy._core._multiarray_umath, numpy.linalg._umath_linalg
+Extension modules: numpy._core._multiarray_umath[K  ★ dim61 seed1 best=1.34099218
+, PIL._imaging, kiwisolver._cext, numpy.linalg._umath_linalg, PIL._imaging[K  ★ dim63 seed0 best=1.79093995
+, kiwisolver._cext, torch._C, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C, torch._C._dynamo.utils[K  ★ dim64 seed0 best=1.62324675
+, , torch._C._ffttorch._C._dynamo.autograd_compiler, , torch._C._dynamo.eval_frametorch._C._linalg, , torch._C._nestedtorch._C._dynamo.guards, , torch._C._dynamo.utilstorch._C._nn, torch._C._fft, torch._C._sparse, , torch._C._linalgtorch._C._special, torch._C._nested, torch._C._nn, torch._C._sparse, torch._C._special, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._pcg64[K  ★ dim64 seed1 best=1.58188943
+, numpy.random._generator, numpy.random._common, numpy.random._mt19937, , numpy.random.bit_generatornumpy.random._philox, , numpy.random._sfc64numpy.random._bounded_integers, numpy.random.mtrand, numpy.random._pcg64 (total: 24)
+, numpy.random._generator, numpy.random._mt19937, numpy.random._philox, numpy.random._sfc64, numpy.random.mtrand (total: 24)
+[K  ★ dim65 seed0 best=1.93254710
+[K  ★ dim65 seed1 best=2.01036326
+[K  ★ dim66 seed2 best=1.96953436
+[K  ★ dim66 seed3 best=1.45936341
+[K  ★ dim67 seed0 best=1.57024733
+[K  ★ dim68 seed0 best=2.17121530
+[K  ★ dim69 seed0 best=1.84398390
+
+Extension modules: numpy._core._multiarray_umath, numpy.linalg._umath_linalg, PIL._imaging, kiwisolver._cext, torch._C, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fft, torch._C._linalg, torch._C._nested, torch._C._nn, torch._C._sparse, torch._C._special[K  ★ dim70 seed0 best=1.52146335
+, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._pcg64, numpy.random._generator, numpy.random._mt19937, numpy.random._philox, numpy.random._sfc64[K  ★ dim71 seed0 best=2.02952001
+, numpy.random.mtrand (total: 24)
+[K  ★ dim72 seed16 best=2.03267951
+[K  ★ dim73 seed0 best=2.22831830
+[K  ★ dim74 seed69 best=2.04148515
+[K  ★ dim75 seed6 best=2.11585240
+[K  ★ dim76 seed0 best=1.93334462
+[K  ★ dim78 seed0 best=2.10791104
+[K  ★ dim80 seed8 best=2.41760347
+Fatal Python error: Segmentation fault
+
+Current thread 0x00007fcb0e7e6740 (most recent call first):
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1001 in _exec_action
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1059 in step
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1188 in env_worker
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 108 in run
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 313 in _bootstrap
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 135 in _main
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+
+Extension modules: numpy._core._multiarray_umath, numpy.linalg._umath_linalg, PIL._imaging, kiwisolver._cext, torch._C, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fft, torch._C._linalg, torch._C._nested, torch._C._nn, torch._C._sparse, torch._C._special, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._pcg64, numpy.random._generator, numpy.random._mt19937, numpy.random._philox, numpy.random._sfc64, numpy.random.mtrand (total: 24)
+Fatal Python error: Segmentation fault
+
+Current thread 0x000070975f607740 (most recent call first):
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 998 in _exec_action
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1059 in step
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1188 in env_worker
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 108 in run
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 313 in _bootstrap
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 135 in _main
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+
+Extension modules: numpy._core._multiarray_umath, numpy.linalg._umath_linalg, PIL._imaging, kiwisolver._cext, torch._C, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fft, torch._C._linalg, torch._C._nested, torch._C._nn, torch._C._sparse, torch._C._special, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._pcg64, numpy.random._generator, numpy.random._mt19937, numpy.random._philox, numpy.random._sfc64, numpy.random.mtrand (total: 24)
+Fatal Python error: Segmentation fault
+
+Current thread 0x000077da4e47c740 (most recent call first):
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 998 in _exec_action
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1059 in step
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1188 in env_worker
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 108 in run
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 313 in _bootstrap
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 135 in _main
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+Fatal Python error: Segmentation fault
+
+Current thread 0x00007a4a4de6b740 (most recent call first):
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 998 in _exec_action
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1059 in step
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1188 in env_worker
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 108 in run
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 313 in 
+Extension modules: _bootstrapnumpy._core._multiarray_umath
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 135 in _main
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 122 in spawn_main
+  File ", <string>numpy.linalg._umath_linalg", line 1 in <module>
+Fatal Python error: Segmentation fault
+
+Current thread 0x00007db1fd976740 (most recent call first):
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line , PIL._imaging998 in _exec_action
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1059 in step
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line , kiwisolver._cext1188 in env_worker
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 108 in run
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 313 in _bootstrap
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 135 in _main
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 122 in spawn_main
+  File , "torch._C<string>", line 1 in <module>
+, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fft, torch._C._linalg, torch._C._nested, torch._C._nn, torch._C._sparse, torch._C._special
+Extension modules: numpy._core._multiarray_umath, numpy.linalg._umath_linalg, numpy.random._common, numpy.random.bit_generator, PIL._imaging, numpy.random._bounded_integers, numpy.random._pcg64, kiwisolver._cext, numpy.random._generator, numpy.random._mt19937, numpy.random._philox, numpy.random._sfc64, numpy.random.mtrand (total: 24)
+, torch._C, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fft, torch._C._linalg, torch._C._nested, torch._C._nn, torch._C._sparse, torch._C._special
+Extension modules: numpy._core._multiarray_umath, numpy.linalg._umath_linalg, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._pcg64, PIL._imaging, numpy.random._generator, numpy.random._mt19937, kiwisolver._cext, numpy.random._philox, numpy.random._sfc64, numpy.random.mtrand (total: 24)
+, torch._C, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fft, torch._C._linalg, torch._C._nested, torch._C._nn, torch._C._sparse, torch._C._special, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._pcg64, numpy.random._generator, numpy.random._mt19937, numpy.random._philox, numpy.random._sfc64, numpy.random.mtrand (total: 24)
+Fatal Python error: Segmentation fault
+
+Current thread 0x00007b1b0805e740 (most recent call first):
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 998 in _exec_action
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1059 in step
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1188 in env_worker
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 108 in run
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 313 in _bootstrap
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 135 in _main
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+
+Extension modules: numpy._core._multiarray_umath, numpy.linalg._umath_linalg, PIL._imaging, kiwisolver._cext, torch._C, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fft, torch._C._linalg, torch._C._nested, torch._C._nn, torch._C._sparse, torch._C._special, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._pcg64, numpy.random._generator, numpy.random._mt19937, numpy.random._philox, numpy.random._sfc64, numpy.random.mtrand (total: 24)
+Fatal Python error: Segmentation fault
+
+Current thread 0x000078d525ee4740 (most recent call first):
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1001 in _exec_action
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1059 in step
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1188 in env_worker
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 108 in run
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 313 in _bootstrap
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 135 in _main
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+
+Extension modules: numpy._core._multiarray_umath, numpy.linalg._umath_linalg, PIL._imaging, kiwisolver._cext, torch._C, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fft, torch._C._linalg, torch._C._nested, torch._C._nn, torch._C._sparse, torch._C._special, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._pcg64, numpy.random._generator, numpy.random._mt19937, numpy.random._philox, numpy.random._sfc64, numpy.random.mtrand (total: 24)
+Fatal Python error: Segmentation fault
+
+Current thread 0x0000767095418740 (most recent call first):
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 998 in _exec_action
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1059 in step
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1188 in env_worker
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 108 in run
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 313 in _bootstrap
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 135 in _main
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+Fatal Python error: Segmentation fault
+
+Current thread 0x00007a0f98702740 (most recent call first):
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 998 in _exec_action
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1059 in step
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1188 in env_worker
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 108 in run
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 313 in _bootstrap
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 135 in _main
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+
+Extension modules: numpy._core._multiarray_umath, numpy.linalg._umath_linalg, PIL._imaging, kiwisolver._cext, torch._C, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fft, torch._C._linalg, torch._C._nested
+Extension modules: , numpy._core._multiarray_umathtorch._C._nn, torch._C._sparse, torch._C._special, numpy.linalg._umath_linalg, PIL._imaging, numpy.random._common, numpy.random.bit_generator, kiwisolver._cext, numpy.random._bounded_integers, numpy.random._pcg64, numpy.random._generator, numpy.random._mt19937, numpy.random._philox, torch._C, numpy.random._sfc64, torch._C._dynamo.autograd_compiler, numpy.random.mtrand (total: 24)
+, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fftFatal Python error: Segmentation fault
+
+Current thread 0x000077a3a41f0740 (most recent call first):
+  File ", /home/amax/projects/DRL/scripts/agent/a10.pytorch._C._linalg", line 998 in _exec_action
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line , 1059torch._C._nested in step
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1188,  in torch._C._nnenv_worker
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 108 in run
+  File , "torch._C._sparse/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 313 in _bootstrap
+  File ", /home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.pytorch._C._special", line 135 in _main
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._pcg64, numpy.random._generator, numpy.random._mt19937, numpy.random._philox, numpy.random._sfc64, numpy.random.mtrand (total: 24)
+
+Extension modules: numpy._core._multiarray_umath, numpy.linalg._umath_linalg, PIL._imaging, kiwisolver._cext, torch._C, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fft, torch._C._linalg, torch._C._nested, torch._C._nn, torch._C._sparse, torch._C._special, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._pcg64, numpy.random._generator, numpy.random._mt19937, numpy.random._philox, numpy.random._sfc64, numpy.random.mtrand (total: 24)
+Fatal Python error: Segmentation fault
+
+Current thread 0x000074d646713740 (most recent call first):
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 998 in _exec_action
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1059 in step
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1188 in env_worker
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 108 in run
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/process.py", line 313 in _bootstrap
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 135 in _main
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/spawn.py", line 122 in spawn_main
+  File "<string>", line 1 in <module>
+
+Extension modules: numpy._core._multiarray_umath, numpy.linalg._umath_linalg, PIL._imaging, kiwisolver._cext, torch._C, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fft, torch._C._linalg, torch._C._nested, torch._C._nn, torch._C._sparse, torch._C._special, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._pcg64, numpy.random._generator, numpy.random._mt19937, numpy.random._philox, numpy.random._sfc64, numpy.random.mtrand (total: 24)
+Traceback (most recent call last):
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1297, in recv_one
+    return self.remotes[eid].recv()
+           ~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/connection.py", line 251, in recv
+    buf = self._recv_bytes()
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/connection.py", line 431, in _recv_bytes
+    buf = self._recv(4)
+  File "/home/amax/.conda/envs/drl_env/lib/python3.13/multiprocessing/connection.py", line 400, in _recv
+    raise EOFError
+EOFError
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1632, in <module>
+    train_all(
+    ~~~~~~~~~^
+        vec_env,
+        ^^^^^^^^
+    ...<7 lines>...
+        resume_extra=resume_extra,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1441, in train_all
+    obs, rew, done, info = vec_env.recv_one(e)
+                           ~~~~~~~~~~~~~~~~^^^
+  File "/home/amax/projects/DRL/scripts/agent/a10.py", line 1310, in recv_one
+    raise RuntimeError(
+    ...<10 lines>...
+    ) from exc
+RuntimeError: 
+Environment worker exited unexpectedly:
+  env_id        = 2
+  dim           = 51
+  seed          = 0
+  file          = /home/amax/projects/DRL/dataset/svpchallengedim51seed0.txt
+  worker_pid    = 53839
+  worker_alive  = False
+  worker_exit   = -11  (1=Py异常  -6=SIGABRT  -9=SIGKILL/OOM  -11=SIGSEGV)
+  sieve_status  = [{'worker': 0, 'pid': 53833, 'alive': True, 'exitcode': None}, {'worker': 1, 'pid': 53834, 'alive': True, 'exitcode': None}, {'worker': 2, 'pid': 53835, 'alive': True, 'exitcode': None}, {'worker': 3, 'pid': 53836, 'alive': True, 'exitcode': None}]
+
