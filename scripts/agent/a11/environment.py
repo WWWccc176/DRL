@@ -14,7 +14,12 @@ from .config import (
     RESULTS_DIR,
     STATE_PHASE_PERIOD,
 )
-from .io_utils import matrix_to_string, parse_challenge_file, parse_dim_seed, parse_fplll
+from .io_utils import (
+    matrix_to_string,
+    parse_challenge_file,
+    parse_dim_seed,
+    parse_fplll,
+)
 
 
 class LatticeEnv:
@@ -42,56 +47,50 @@ class LatticeEnv:
         self._preload()
 
     def _initial_feature_summary(self, info, log_vol=None):
-    cos = np.asarray(info["cos_matrix"], dtype=np.float32)
-    lower = cos[np.tril_indices(self.dim, -1)]
+        cos = np.asarray(info["cos_matrix"], dtype=np.float32)
+        lower = cos[np.tril_indices(self.dim, -1)]
 
-    max_cos = float(
-        np.clip(
-            np.max(lower) if lower.size else 0.0,
-            0.0,
-            1.0,
+        max_cos = float(
+            np.clip(
+                np.max(lower) if lower.size else 0.0,
+                0.0,
+                1.0,
+            )
         )
-    )
 
-    min_cos = float(
-        np.clip(
-            np.min(lower) if lower.size else 0.0,
-            0.0,
-            1.0,
+        min_cos = float(
+            np.clip(
+                np.min(lower) if lower.size else 0.0,
+                0.0,
+                1.0,
+            )
         )
-    )
 
-    gs = np.asarray(info["gs_log_norms"], dtype=np.float64)
+        gs = np.asarray(info["gs_log_norms"], dtype=np.float64)
 
-    if log_vol is None:
-        log_vol = float(np.sum(gs))
+        if log_vol is None:
+            log_vol = float(np.sum(gs))
 
-    log_gh = (
-        log_vol / self.dim
-        + 0.5 * math.log(
-            self.dim / (2 * math.pi * math.e)
-        )
-    )
+        log_gh = log_vol / self.dim + 0.5 * math.log(self.dim / (2 * math.pi * math.e))
 
-    log_b1 = float(gs[0])
-    log_ratio = log_b1 - log_gh
-    ratio = float(math.exp(log_ratio))
-    log_defect = float(info["log_prod"] - log_vol)
+        log_b1 = float(gs[0])
+        log_ratio = log_b1 - log_gh
+        ratio = float(math.exp(log_ratio))
+        log_defect = float(info["log_prod"] - log_vol)
 
-    return {
-        "log_vol": log_vol,
-        "log_gh": log_gh,
-        "log_b1": log_b1,
-        "ratio": ratio,
-        "log_defect": log_defect,
-        "max_cos": max_cos,
-        "min_cos": min_cos,
-        "gs_head": float(gs[0]),
-        "gs_tail": float(gs[-1]),
-        "gs_length": int(len(gs)),
-        "cos_shape": tuple(cos.shape),
-    }
-
+        return {
+            "log_vol": log_vol,
+            "log_gh": log_gh,
+            "log_b1": log_b1,
+            "ratio": ratio,
+            "log_defect": log_defect,
+            "max_cos": max_cos,
+            "min_cos": min_cos,
+            "gs_head": float(gs[0]),
+            "gs_tail": float(gs[-1]),
+            "gs_length": int(len(gs)),
+            "cos_shape": tuple(cos.shape),
+        }
 
     def _log_initial_stage(self, stage, metrics):
         message = (
@@ -113,20 +112,20 @@ class LatticeEnv:
             f"  GSO length   = {metrics['gs_length']}\n"
             f"  cosine shape = {metrics['cos_shape']}\n"
         )
-    
+
         print(message, flush=True)
-    
+
         init_dir = os.path.join(
             RESULTS_DIR,
             "initialization",
         )
         os.makedirs(init_dir, exist_ok=True)
-    
+
         log_path = os.path.join(
             init_dir,
             f"env{self.env_id}_dim{self.dim}_seed{self.seed_id}.log",
         )
-    
+
         with open(
             log_path,
             "a",
@@ -158,17 +157,11 @@ class LatticeEnv:
             flush=True,
         )
 
-        self.initial_pool_id = self.backend.create_matrix_lll(
-            matrix_to_string(matrix)
-        )
+        self.initial_pool_id = self.backend.create_matrix_lll(matrix_to_string(matrix))
 
-        lll_info = self.backend.evaluate(
-            self.initial_pool_id
-        )
+        lll_info = self.backend.evaluate(self.initial_pool_id)
 
-        lll_metrics = self._initial_feature_summary(
-            lll_info
-        )
+        lll_metrics = self._initial_feature_summary(lll_info)
 
         self.log_vol = lll_metrics["log_vol"]
         self.log_GH = lll_metrics["log_gh"]
@@ -225,31 +218,16 @@ class LatticeEnv:
         )
 
         self.defect_scale = max(
-            abs(
-                float(
-                    bkz_info["log_prod"]
-                    - self.log_vol
-                )
-            ),
+            abs(float(bkz_info["log_prod"] - self.log_vol)),
             1.0,
         )
 
         self.ratio_scale = max(
-            abs(
-                float(
-                    gs[0]
-                    - self.log_GH
-                )
-            ),
+            abs(float(gs[0] - self.log_GH)),
             1.0,
         )
 
-        beta_values = sorted(
-            {
-                beta
-                for _, beta in self.action_list
-            }
-        )
+        beta_values = sorted({beta for _, beta in self.action_list})
 
         print(
             "\n"
@@ -395,10 +373,7 @@ class LatticeEnv:
 
         max_beta = max(b for _, b in self.action_list)
         reward = (
-            w * r_ratio
-            + alpha * r_orth
-            + gamma_r * r_def
-            - cost_w * (beta / max_beta)
+            w * r_ratio + alpha * r_orth + gamma_r * r_def - cost_w * (beta / max_beta)
         )
 
         if new_ratio < old_best:
