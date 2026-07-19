@@ -34,6 +34,8 @@ DIM_REF = 60.0
 NUM_GLOBALS = 7
 
 # Environment / dataset scheduling
+DIM_MIN = 50
+DIM_MAX = 95
 ENV_COUNT = 48
 ENVS_PER_FILE = 2
 STATE_PHASE_PERIOD = 3

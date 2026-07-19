@@ -15,6 +15,8 @@ if __package__ in (None, ""):
         CHECKPOINT_FILE,
         DATASET_DIR,
         DIMS_PER_UPDATE,
+        DIM_MIN,
+        DIM_MAX,
         ENV_COUNT,
         ENVS_PER_FILE,
         GOAL_THRESHOLD,
@@ -35,6 +37,8 @@ else:
         CAPACITY_PER_DIM,
         CHECKPOINT_FILE,
         DATASET_DIR,
+        DIM_MIN,
+        DIM_MAX,
         DIMS_PER_UPDATE,
         ENV_COUNT,
         ENVS_PER_FILE,
@@ -83,7 +87,13 @@ def main():
     print("MAX_CONCURRENT_BACKEND_REDUCTIONS=", MAX_CONCURRENT_BACKEND_REDUCTIONS)
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    files = gather_files(DATASET_DIR)
+    all_files = gather_files(DATASET_DIR)
+
+    files = [
+        filepath
+        for filepath in all_files
+        if DIM_MIN <= parse_dim_seed(filepath)[0] <= DIM_MAX
+    ]
     if not files:
         print("No dim/seed dataset .txt files found in", DATASET_DIR)
         raise SystemExit(1)
@@ -91,10 +101,16 @@ def main():
     composition = defaultdict(int)
     for filepath in files:
         composition[parse_dim_seed(filepath)[0]] += 1
-    print(
-        f"Dataset files: {len(files)} | all dimensions/seeds enabled | "
-        f"composition={dict(sorted(composition.items()))}"
-    )
+    print("=" * 80)
+    print("A11 DATASET CONFIGURATION")
+    print("=" * 80)
+    print(f"Dimension range : {DIM_MIN} - {DIM_MAX}")
+    print(f"Dataset files   : {len(files)}")
+    print(f"ENV_COUNT       : {ENV_COUNT}")
+    print(f"ENVS_PER_FILE   : {ENVS_PER_FILE}")
+    print(f"Dimensions      : {sorted(composition)}")
+    print(f"Composition     : {dict(sorted(composition.items()))}")
+    print("=" * 80, flush=True)
 
     vec_env = SubprocVecEnv(
         files,
