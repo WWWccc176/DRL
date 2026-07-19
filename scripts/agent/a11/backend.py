@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import math
+import os
 import sys
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -10,7 +12,8 @@ from .config import BACKEND_BUILD_DIR, BACKEND_DIR, PROJECT_ROOT
 from .io_utils import parse_fplll
 from .scheduler import reduction_slot
 
-for path in (BACKEND_BUILD_DIR, BACKEND_DIR, PROJECT_ROOT):
+# Repeated insert(0) reverses priority, so insert low -> high priority.
+for path in (PROJECT_ROOT, BACKEND_DIR, BACKEND_BUILD_DIR):
     if path not in sys.path:
         sys.path.insert(0, path)
 
@@ -39,15 +42,17 @@ def _row_log_norm(row) -> float:
 
 
 class LatticeBackend:
-    """Single Python boundary to Backend/my_project_backend.
+    """Python boundary to the local C++/CUDA lattice backend.
 
-    The RL action is only (pos, beta). Normal actions use the backend adaptive
-    Enum/BGJ route. Initial BKZ40 and final sieve45+LLL use explicit native APIs so
-    they cannot be confused with the adaptive route.
+    The agent still chooses only (pos, beta). The native backend exposes a routing
+    query so Python can acquire the correct CPU or per-GPU semaphore without making
+    the algorithm choice itself.
     """
 
-    def __init__(self, reduction_gate=None):
-        self.reduction_gate = reduction_gate
+    def __init__(self, cpu_gate=None, gpu_gate=None, gpu_id: int | None = None):
+        self.cpu_gate = cpu_gate
+        self.gpu_gate = gpu_gate
+        self.gpu_id = gpu_id
 
     @staticmethod
     def module_info() -> dict[str, Any]:
@@ -57,6 +62,13 @@ class LatticeBackend:
             "has_reduce_extreme": hasattr(my_project_backend, "reduce_extreme"),
             "has_reduce_bkz2_global": hasattr(my_project_backend, "reduce_bkz2_global"),
             "has_reduce_sieve_block": hasattr(my_project_backend, "reduce_sieve_block"),
+            "has_action_uses_gpu": hasattr(my_project_backend, "action_uses_gpu"),
+            "adaptive_sieve_threshold": (
+                int(my_project_backend.adaptive_sieve_threshold())
+                if hasattr(my_project_backend, "adaptive_sieve_threshold")
+                else None
+            ),
+            "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
             "cuda_available": bool(
                 my_project_backend.cuda_available()
                 if hasattr(my_project_backend, "cuda_available")
@@ -66,20 +78,33 @@ class LatticeBackend:
 
     @staticmethod
     def validate_required_api() -> None:
-        missing = [
-            name
-            for name in ("reduce_bkz2_global", "reduce_sieve_block")
-            if not hasattr(my_project_backend, name)
-        ]
+        module_file = Path(getattr(my_project_backend, "__file__", "")).resolve()
+        build_dir = Path(BACKEND_BUILD_DIR).resolve()
+
+        if build_dir not in module_file.parents:
+            raise RuntimeError(
+                "A11 loaded my_project_backend from the wrong location: "
+                f"{module_file}. Expected the rebuilt module under {build_dir}."
+            )
+
+        required = (
+            "reduce_bkz2_global",
+            "reduce_sieve_block",
+            "action_uses_gpu",
+            "adaptive_sieve_threshold",
+        )
+        missing = [name for name in required if not hasattr(my_project_backend, name)]
         if missing:
             raise RuntimeError(
                 "Backend is missing required A11 APIs: "
                 + ", ".join(missing)
-                + ". Rebuild Backend with the supplied lattice_backend.cpp."
+                + ". Replace lattice_backend.cpp with the supplied file and rebuild Backend."
             )
 
     def create_matrix_lll(self, matrix_str: str) -> int:
-        return int(my_project_backend.create_matrix_lll(matrix_str))
+        # Initial LLL is CPU work and participates in the global CPU budget.
+        with reduction_slot(self.cpu_gate):
+            return int(my_project_backend.create_matrix_lll(matrix_str))
 
     def clone_matrix(self, matrix_id: int) -> int:
         return int(my_project_backend.clone_matrix(matrix_id))
@@ -105,15 +130,18 @@ class LatticeBackend:
 
     def initial_bkz(self, matrix_id: int, beta: int = 40) -> dict[str, Any]:
         """Run one global BKZ 2.0 tour after create_matrix_lll()."""
-        with reduction_slot(self.reduction_gate):
+        with reduction_slot(self.cpu_gate):
             raw = my_project_backend.reduce_bkz2_global(matrix_id, beta, 1)
         out = dict(raw)
         out.update(self.evaluate(matrix_id))
         return out
 
     def reduce(self, matrix_id: int, pos: int, beta: int) -> dict[str, Any]:
-        """Normal RL action: backend decides exact enumeration vs local BGJ sieve."""
-        with reduction_slot(self.reduction_gate):
+        """Normal RL action; native routing decides CPU enumeration vs GPU BGJ."""
+        uses_gpu = bool(my_project_backend.action_uses_gpu(matrix_id, pos, beta))
+        gate = self.gpu_gate if uses_gpu else self.cpu_gate
+
+        with reduction_slot(gate):
             if hasattr(my_project_backend, "reduce_adaptive"):
                 raw = my_project_backend.reduce_adaptive(matrix_id, pos, beta)
             elif hasattr(my_project_backend, "reduce_extreme"):
@@ -122,13 +150,19 @@ class LatticeBackend:
                 raw = my_project_backend.reduce(matrix_id, "ORACLE", beta, pos)
 
         out = dict(raw)
+        out["scheduled_device"] = "gpu" if uses_gpu else "cpu"
+        if uses_gpu and self.gpu_id is not None:
+            out["physical_gpu"] = int(self.gpu_id)
         out.update(self.evaluate(matrix_id))
         return out
 
     def final_polish(self, matrix_id: int, beta: int = 45) -> dict[str, Any]:
-        """Cycle tail: pos=0 local sieve(beta) followed by full-basis LLL."""
-        with reduction_slot(self.reduction_gate):
+        """Cycle tail: explicit local BGJ sieve at pos=0, then full-basis LLL."""
+        with reduction_slot(self.gpu_gate):
             raw = my_project_backend.reduce_sieve_block(matrix_id, 0, beta)
         out = dict(raw)
+        out["scheduled_device"] = "gpu"
+        if self.gpu_id is not None:
+            out["physical_gpu"] = int(self.gpu_id)
         out.update(self.evaluate(matrix_id))
         return out

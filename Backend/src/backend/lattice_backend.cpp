@@ -24,6 +24,9 @@ static std::unordered_map<int64_t,Matrix> g_pool;
 static int64_t g_next_id=1;
 static std::mutex g_pool_mutex;
 
+static constexpr int kAdaptiveSieveThreshold=40;
+static constexpr int kCudaFeatureMinDim=256;
+
 static int64_t create_matrix(const std::string& s) {
     std::lock_guard<std::mutex> lk(g_pool_mutex);
     const int64_t id=g_next_id++;
@@ -74,7 +77,11 @@ static py::dict evaluate_matrix(int64_t id) {
     double stats[2]={0.0,0.0};
     bool gpu=false;
 #ifdef USE_CUDA
-    gpu=cuda_gram_cosine(M.data(),n,cols,G.data(),C.data(),stats);
+    // Current A11 states are only 50-95 dimensional. Launching CUDA for these tiny
+    // Gram/cosine matrices creates a large context in every env and is slower than
+    // the CPU path. Reserve CUDA state extraction for genuinely large matrices.
+    if (n>=kCudaFeatureMinDim)
+        gpu=cuda_gram_cosine(M.data(),n,cols,G.data(),C.data(),stats);
 #endif
     if (!gpu) {
         for (int i=0;i<n;++i) for (int j=0;j<=i;++j) {
@@ -103,6 +110,23 @@ static py::dict evaluate_matrix(int64_t id) {
     d["max_cos"]=stats[0];
     d["mean_cos"]=(n>1?stats[1]/((double)n*(n-1)/2.0):0.0);
     return d;
+}
+
+static int adaptive_sieve_threshold_api() {
+    return kAdaptiveSieveThreshold;
+}
+
+static bool action_uses_gpu_api(int64_t matrix_id,int pos,int beta) {
+    std::lock_guard<std::mutex> lk(g_pool_mutex);
+    auto it=g_pool.find(matrix_id);
+    if (it==g_pool.end()) throw std::runtime_error("invalid matrix id");
+
+    const int rows=it->second.get_rows();
+    if (pos<0 || pos>=rows || beta<2)
+        throw std::runtime_error("invalid adaptive block");
+
+    const int actual_beta=std::min(beta,rows-pos);
+    return actual_beta>=kAdaptiveSieveThreshold;
 }
 
 static py::dict reduce_extreme_api(int64_t matrix_id,int pos,int beta,bool bool_sieve) {
@@ -201,6 +225,9 @@ PYBIND11_MODULE(my_project_backend,m) {
     m.def("dump_matrix",&dump_matrix,py::arg("matrix_id"));
     m.def("free_matrix",&free_matrix,py::arg("matrix_id"));
     m.def("clone_matrix",&clone_matrix,py::arg("matrix_id"));
+    m.def("adaptive_sieve_threshold",&adaptive_sieve_threshold_api);
+    m.def("action_uses_gpu",&action_uses_gpu_api,
+          py::arg("matrix_id"),py::arg("pos"),py::arg("beta"));
 #ifdef USE_CUDA
     m.def("cuda_available",[](){return cuda_is_available();});
 #else

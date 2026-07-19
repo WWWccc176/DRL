@@ -21,7 +21,11 @@ if __package__ in (None, ""):
         ENVS_PER_FILE,
         GOAL_THRESHOLD,
         LOG_EVERY,
-        MAX_CONCURRENT_BACKEND_REDUCTIONS,
+        CPU_REDUCTION_CONCURRENCY,
+        ENV_CPU_THREADS,
+        GPU_IDS,
+        GPU_REDUCTIONS_PER_DEVICE,
+        MAIN_CPU_THREADS,
         NUM_GLOBALS,
         RESULTS_DIR,
         SAVE_EVERY,
@@ -44,7 +48,11 @@ else:
         ENVS_PER_FILE,
         GOAL_THRESHOLD,
         LOG_EVERY,
-        MAX_CONCURRENT_BACKEND_REDUCTIONS,
+        CPU_REDUCTION_CONCURRENCY,
+        ENV_CPU_THREADS,
+        GPU_IDS,
+        GPU_REDUCTIONS_PER_DEVICE,
+        MAIN_CPU_THREADS,
         NUM_GLOBALS,
         RESULTS_DIR,
         SAVE_EVERY,
@@ -84,7 +92,17 @@ def main():
     print("Backend:", LatticeBackend.module_info())
     print("Action = (pos, beta); external G6K runtime = disabled")
     print("ENV_COUNT=", ENV_COUNT, "| ENVS_PER_FILE=", ENVS_PER_FILE)
-    print("MAX_CONCURRENT_BACKEND_REDUCTIONS=", MAX_CONCURRENT_BACKEND_REDUCTIONS)
+    print(
+        "CPU scheduler:",
+        f"concurrency={CPU_REDUCTION_CONCURRENCY}",
+        f"env_threads={ENV_CPU_THREADS}",
+        f"main_threads={MAIN_CPU_THREADS}",
+    )
+    print(
+        "GPU scheduler:",
+        f"physical_gpus={GPU_IDS}",
+        f"heavy_jobs_per_gpu={GPU_REDUCTIONS_PER_DEVICE}",
+    )
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
     all_files = gather_files(DATASET_DIR)
@@ -121,6 +139,7 @@ def main():
         f"Active envs: {vec_env.num_envs} | "
         f"current dims: {sorted(set(vec_env.env_dims))}"
     )
+    print("GPU env-slot assignment:", vec_env.gpu_assignment_counts)
 
     agent = DQNAgent(
         num_globals=NUM_GLOBALS,

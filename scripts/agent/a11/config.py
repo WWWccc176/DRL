@@ -44,11 +44,31 @@ FINAL_POLISH_BETA = 45
 DETAIL_EVERY_CYCLES = 10
 ACTION_BETA_RATIO = 0.8
 
-# Local backend scheduling.
-# The integrated BGJ backend owns its internal CPU/GPU scheduling. Keep this gate
-# conservative unless profiling shows that concurrent reductions are beneficial.
-MAX_CONCURRENT_BACKEND_REDUCTIONS = int(
-    os.environ.get("A11_BACKEND_CONCURRENCY", "1")
+# Hardware scheduling: 2 x Xeon 6530 (48 physical cores / 96 logical threads)
+# and 4 x RTX 4090. 48 fixed env slots are preserved.
+EXPECTED_LOGICAL_CPUS = int(os.environ.get("A11_EXPECTED_LOGICAL_CPUS", "96"))
+MAIN_CPU_THREADS = int(os.environ.get("A11_MAIN_CPU_THREADS", "4"))
+ENV_CPU_THREADS = int(os.environ.get("A11_ENV_CPU_THREADS", "2"))
+
+# With 44 CPU reductions x 2 threads + 4 main/learner CPU threads, the scheduler
+# budget is 92 runnable CPU threads, about 95.8% of 96 logical threads. GPU jobs
+# use separate per-device gates and may also consume light host-side CPU time.
+CPU_REDUCTION_CONCURRENCY = int(
+    os.environ.get("A11_CPU_CONCURRENCY", "44")
+)
+
+GPU_IDS = tuple(
+    int(x.strip())
+    for x in os.environ.get("A11_GPU_IDS", "0,1,2,3").split(",")
+    if x.strip()
+)
+if not GPU_IDS:
+    raise ValueError("A11_GPU_IDS must contain at least one GPU id")
+
+# One heavy local BGJ/DH task per physical GPU at a time. Each env process sees
+# only its assigned GPU, where that physical device becomes logical cuda:0.
+GPU_REDUCTIONS_PER_DEVICE = int(
+    os.environ.get("A11_GPU_REDUCTIONS_PER_DEVICE", "1")
 )
 
 # Training

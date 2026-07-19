@@ -7,16 +7,29 @@ import sys
 import traceback
 from collections import deque
 
-from .config import ENV_COUNT, ENVS_PER_FILE, SEED
+from .config import ENV_COUNT, ENVS_PER_FILE, GPU_IDS, SEED
 from .io_utils import parse_dim_seed
 from .runtime import configure_env_runtime
-from .scheduler import create_reduction_gate
+from .scheduler import create_reduction_gates
 
 
-def env_worker(remote, parent_remote, filepath: str, env_id: int, reduction_gate):
+def env_worker(
+    remote,
+    parent_remote,
+    filepath: str,
+    env_id: int,
+    physical_gpu_id: int,
+    cpu_gate,
+    gpu_gate,
+):
     import faulthandler
 
-    configure_env_runtime()
+    # GPU affinity MUST be fixed before importing environment/backend/native .so.
+    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(physical_gpu_id)
+    os.environ["A11_PHYSICAL_GPU_ID"] = str(physical_gpu_id)
+
+    cpu_affinity = configure_env_runtime(env_id)
     from .environment import LatticeEnv
 
     faulthandler.enable(all_threads=True)
@@ -27,7 +40,21 @@ def env_worker(remote, parent_remote, filepath: str, env_id: int, reduction_gate
     current_file = filepath
 
     try:
-        env = LatticeEnv(current_file, env_id=env_id, reduction_gate=reduction_gate)
+        print(
+            f"[env{env_id}] pid={os.getpid()} "
+            f"physical_gpu={physical_gpu_id} logical_cuda=0 "
+            f"cpu_affinity={list(cpu_affinity)}",
+            flush=True,
+        )
+
+        env = LatticeEnv(
+            current_file,
+            env_id=env_id,
+            cpu_gate=cpu_gate,
+            gpu_gate=gpu_gate,
+            gpu_id=physical_gpu_id,
+        )
+
         while True:
             last_cmd, data = remote.recv()
 
@@ -40,6 +67,7 @@ def env_worker(remote, parent_remote, filepath: str, env_id: int, reduction_gate
                     "beta": beta,
                     "pool_id": env.current_pool_id,
                     "step": env.current_step,
+                    "physical_gpu": physical_gpu_id,
                 }
                 state, reward, done, info = env.step(action_idx)
                 best_update = env.pop_best_update()
@@ -54,7 +82,13 @@ def env_worker(remote, parent_remote, filepath: str, env_id: int, reduction_gate
                 next_file = str(data)
                 env.close()
                 current_file = next_file
-                env = LatticeEnv(current_file, env_id=env_id, reduction_gate=reduction_gate)
+                env = LatticeEnv(
+                    current_file,
+                    env_id=env_id,
+                    cpu_gate=cpu_gate,
+                    gpu_gate=gpu_gate,
+                    gpu_id=physical_gpu_id,
+                )
                 last_action = None
                 remote.send(env.reset())
 
@@ -72,13 +106,14 @@ def env_worker(remote, parent_remote, filepath: str, env_id: int, reduction_gate
         print(
             "\n"
             f"[env{env_id}] FATAL\n"
-            f"  pid         = {os.getpid()}\n"
-            f"  dim         = {dim}\n"
-            f"  seed        = {seed_id}\n"
-            f"  file        = {current_file}\n"
-            f"  last_cmd    = {last_cmd!r}\n"
-            f"  last_action = {last_action!r}\n"
-            f"  exception   = {type(exc).__name__}: {exc}",
+            f"  pid          = {os.getpid()}\n"
+            f"  physical_gpu = {physical_gpu_id}\n"
+            f"  dim          = {dim}\n"
+            f"  seed         = {seed_id}\n"
+            f"  file         = {current_file}\n"
+            f"  last_cmd     = {last_cmd!r}\n"
+            f"  last_action  = {last_action!r}\n"
+            f"  exception    = {type(exc).__name__}: {exc}",
             file=sys.stderr,
             flush=True,
         )
@@ -124,7 +159,15 @@ class SubprocVecEnv:
         self.dataset_pairs = sorted({parse_dim_seed(f) for f in self.dataset_files})
         self.dataset_dims = sorted({dim for dim, _ in self.dataset_pairs})
 
-        self.reduction_gate = create_reduction_gate()
+        self.cpu_gate, self.gpu_gates = create_reduction_gates()
+        self.env_gpu_ids = [
+            GPU_IDS[env_id % len(GPU_IDS)]
+            for env_id in range(self.num_envs)
+        ]
+        self.gpu_assignment_counts = {
+            gpu_id: self.env_gpu_ids.count(gpu_id)
+            for gpu_id in GPU_IDS
+        }
 
         self.remotes, self.work_remotes = zip(
             *[mp.Pipe() for _ in range(self.num_envs)]
@@ -133,9 +176,18 @@ class SubprocVecEnv:
         for env_id, (work_remote, remote, filepath) in enumerate(
             zip(self.work_remotes, self.remotes, self.files)
         ):
+            physical_gpu_id = self.env_gpu_ids[env_id]
             process = mp.Process(
                 target=env_worker,
-                args=(work_remote, remote, filepath, env_id, self.reduction_gate),
+                args=(
+                    work_remote,
+                    remote,
+                    filepath,
+                    env_id,
+                    physical_gpu_id,
+                    self.cpu_gate,
+                    self.gpu_gates[physical_gpu_id],
+                ),
                 daemon=True,
             )
             process.start()
