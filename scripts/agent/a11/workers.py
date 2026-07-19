@@ -3,11 +3,21 @@ from __future__ import annotations
 import multiprocessing as mp
 import os
 import random
+import signal
 import sys
+import time
 import traceback
 from collections import deque
 
-from .config import ENV_COUNT, ENVS_PER_FILE, GPU_IDS, SEED
+from .config import (
+    ENV_COUNT,
+    ENVS_PER_FILE,
+    GPU_IDS,
+    SEED,
+    WORKER_CLOSE_GRACE_SECONDS,
+    WORKER_KILL_GRACE_SECONDS,
+    WORKER_TERMINATE_GRACE_SECONDS,
+)
 from .io_utils import parse_dim_seed
 from .runtime import configure_env_runtime
 from .scheduler import create_reduction_gates
@@ -21,8 +31,13 @@ def env_worker(
     physical_gpu_id: int,
     cpu_gate,
     gpu_gate,
+    global_gpu_gate,
 ):
     import faulthandler
+
+    # Only the main process handles Ctrl+C. Workers may be inside pybind/CUDA calls,
+    # so propagating SIGINT to all 48 workers creates traceback storms and slow exit.
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     # GPU affinity MUST be fixed before importing environment/backend/native .so.
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -52,11 +67,15 @@ def env_worker(
             env_id=env_id,
             cpu_gate=cpu_gate,
             gpu_gate=gpu_gate,
+            global_gpu_gate=global_gpu_gate,
             gpu_id=physical_gpu_id,
         )
 
         while True:
-            last_cmd, data = remote.recv()
+            try:
+                last_cmd, data = remote.recv()
+            except EOFError:
+                break
 
             if last_cmd == "step":
                 action_idx = int(data)
@@ -87,6 +106,7 @@ def env_worker(
                     env_id=env_id,
                     cpu_gate=cpu_gate,
                     gpu_gate=gpu_gate,
+                    global_gpu_gate=global_gpu_gate,
                     gpu_id=physical_gpu_id,
                 )
                 last_action = None
@@ -101,7 +121,10 @@ def env_worker(
             else:
                 raise RuntimeError(f"Unknown command in env{env_id}: {last_cmd!r}")
 
-    except BaseException as exc:
+    except (EOFError, BrokenPipeError):
+        # Parent is shutting down or the IPC pipe has already been closed.
+        pass
+    except Exception as exc:
         dim, seed_id = parse_dim_seed(current_file)
         print(
             "\n"
@@ -152,6 +175,7 @@ class SubprocVecEnv:
             )
 
         self.num_envs = env_count
+        self._closed = False
         self._job_queue = deque(jobs)
         self.files = [self._job_queue.popleft() for _ in range(self.num_envs)]
         self.env_dims = [parse_dim_seed(f)[0] for f in self.files]
@@ -159,20 +183,24 @@ class SubprocVecEnv:
         self.dataset_pairs = sorted({parse_dim_seed(f) for f in self.dataset_files})
         self.dataset_dims = sorted({dim for dim, _ in self.dataset_pairs})
 
-        self.cpu_gate, self.gpu_gates = create_reduction_gates()
+        (
+            self.cpu_gate,
+            self.global_gpu_gate,
+            self.gpu_gates,
+        ) = create_reduction_gates()
+
         self.env_gpu_ids = [
-            GPU_IDS[env_id % len(GPU_IDS)]
-            for env_id in range(self.num_envs)
+            GPU_IDS[env_id % len(GPU_IDS)] for env_id in range(self.num_envs)
         ]
         self.gpu_assignment_counts = {
-            gpu_id: self.env_gpu_ids.count(gpu_id)
-            for gpu_id in GPU_IDS
+            gpu_id: self.env_gpu_ids.count(gpu_id) for gpu_id in GPU_IDS
         }
 
         self.remotes, self.work_remotes = zip(
             *[mp.Pipe() for _ in range(self.num_envs)]
         )
         self.processes = []
+
         for env_id, (work_remote, remote, filepath) in enumerate(
             zip(self.work_remotes, self.remotes, self.files)
         ):
@@ -187,11 +215,13 @@ class SubprocVecEnv:
                     physical_gpu_id,
                     self.cpu_gate,
                     self.gpu_gates[physical_gpu_id],
+                    self.global_gpu_gate,
                 ),
                 daemon=True,
             )
             process.start()
             self.processes.append(process)
+
         for work_remote in self.work_remotes:
             work_remote.close()
 
@@ -201,7 +231,6 @@ class SubprocVecEnv:
         return [remote.recv() for remote in self.remotes]
 
     def rotate_one(self, env_id: int):
-        """Finish one file-cycle and assign this fixed env slot to the next file job."""
         current_file = self.files[env_id]
         self._job_queue.append(current_file)
         next_file = self._job_queue.popleft()
@@ -237,13 +266,62 @@ class SubprocVecEnv:
     def poll_ready(self, env_ids):
         return [env_id for env_id in env_ids if self.remotes[env_id].poll(timeout=0)]
 
+    @staticmethod
+    def _join_until(processes, timeout_seconds: float) -> list:
+        deadline = time.monotonic() + max(0.0, timeout_seconds)
+        for process in processes:
+            remaining = max(0.0, deadline - time.monotonic())
+            process.join(timeout=remaining)
+        return [process for process in processes if process.is_alive()]
+
     def close(self):
-        for remote in self.remotes:
+        if self._closed:
+            return
+        self._closed = True
+
+        # Phase 1: cooperative shutdown. Busy workers may not read the command until
+        # a native BKZ/sieve call returns, so this phase is explicitly time-bounded.
+        for remote, process in zip(self.remotes, self.processes):
+            if not process.is_alive():
+                continue
             try:
                 remote.send(("close", None))
             except Exception:
                 pass
-        for process in self.processes:
-            process.join(timeout=5)
-            if process.is_alive():
+
+        survivors = self._join_until(
+            self.processes,
+            WORKER_CLOSE_GRACE_SECONDS,
+        )
+
+        # Phase 2: terminate workers still blocked in Python/native code.
+        for process in survivors:
+            try:
                 process.terminate()
+            except Exception:
+                pass
+
+        survivors = self._join_until(
+            survivors,
+            WORKER_TERMINATE_GRACE_SECONDS,
+        )
+
+        # Phase 3: final hard stop. At this point the whole vector environment is
+        # shutting down, so preserving a stuck native CUDA call is less important
+        # than releasing host RAM and restoring the server.
+        for process in survivors:
+            try:
+                process.kill()
+            except Exception:
+                pass
+
+        self._join_until(
+            survivors,
+            WORKER_KILL_GRACE_SECONDS,
+        )
+
+        for remote in self.remotes:
+            try:
+                remote.close()
+            except Exception:
+                pass

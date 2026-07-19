@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import my_project_backend
 import math
 import os
 import sys
@@ -10,14 +11,13 @@ import numpy as np
 
 from .config import BACKEND_BUILD_DIR, BACKEND_DIR, PROJECT_ROOT
 from .io_utils import parse_fplll
-from .scheduler import reduction_slot
+from .scheduler import gpu_reduction_slot, reduction_slot
 
 # Repeated insert(0) reverses priority, so insert low -> high priority.
 for path in (PROJECT_ROOT, BACKEND_DIR, BACKEND_BUILD_DIR):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-import my_project_backend
 
 _LOG2 = math.log(2.0)
 
@@ -49,9 +49,16 @@ class LatticeBackend:
     the algorithm choice itself.
     """
 
-    def __init__(self, cpu_gate=None, gpu_gate=None, gpu_id: int | None = None):
+    def __init__(
+        self,
+        cpu_gate=None,
+        gpu_gate=None,
+        global_gpu_gate=None,
+        gpu_id: int | None = None,
+    ):
         self.cpu_gate = cpu_gate
         self.gpu_gate = gpu_gate
+        self.global_gpu_gate = global_gpu_gate
         self.gpu_id = gpu_id
 
     @staticmethod
@@ -139,30 +146,47 @@ class LatticeBackend:
     def reduce(self, matrix_id: int, pos: int, beta: int) -> dict[str, Any]:
         """Normal RL action; native routing decides CPU enumeration vs GPU BGJ."""
         uses_gpu = bool(my_project_backend.action_uses_gpu(matrix_id, pos, beta))
-        gate = self.gpu_gate if uses_gpu else self.cpu_gate
+        admission_mem_gb = None
 
-        with reduction_slot(gate):
-            if hasattr(my_project_backend, "reduce_adaptive"):
-                raw = my_project_backend.reduce_adaptive(matrix_id, pos, beta)
-            elif hasattr(my_project_backend, "reduce_extreme"):
-                raw = my_project_backend.reduce_extreme(matrix_id, pos, beta, True)
-            else:
-                raw = my_project_backend.reduce(matrix_id, "ORACLE", beta, pos)
+        if uses_gpu:
+            with gpu_reduction_slot(
+                self.gpu_gate, self.global_gpu_gate
+            ) as available_gb:
+                admission_mem_gb = available_gb
+                if hasattr(my_project_backend, "reduce_adaptive"):
+                    raw = my_project_backend.reduce_adaptive(matrix_id, pos, beta)
+                elif hasattr(my_project_backend, "reduce_extreme"):
+                    raw = my_project_backend.reduce_extreme(matrix_id, pos, beta, True)
+                else:
+                    raw = my_project_backend.reduce(matrix_id, "ORACLE", beta, pos)
+        else:
+            with reduction_slot(self.cpu_gate):
+                if hasattr(my_project_backend, "reduce_adaptive"):
+                    raw = my_project_backend.reduce_adaptive(matrix_id, pos, beta)
+                elif hasattr(my_project_backend, "reduce_extreme"):
+                    raw = my_project_backend.reduce_extreme(matrix_id, pos, beta, True)
+                else:
+                    raw = my_project_backend.reduce(matrix_id, "ORACLE", beta, pos)
 
         out = dict(raw)
         out["scheduled_device"] = "gpu" if uses_gpu else "cpu"
-        if uses_gpu and self.gpu_id is not None:
-            out["physical_gpu"] = int(self.gpu_id)
+        if uses_gpu:
+            if self.gpu_id is not None:
+                out["physical_gpu"] = int(self.gpu_id)
+            if admission_mem_gb is not None:
+                out["sieve_mem_available_gb_at_start"] = float(admission_mem_gb)
         out.update(self.evaluate(matrix_id))
         return out
 
     def final_polish(self, matrix_id: int, beta: int = 45) -> dict[str, Any]:
         """Cycle tail: explicit local BGJ sieve at pos=0, then full-basis LLL."""
-        with reduction_slot(self.gpu_gate):
+        with gpu_reduction_slot(self.gpu_gate, self.global_gpu_gate) as available_gb:
             raw = my_project_backend.reduce_sieve_block(matrix_id, 0, beta)
         out = dict(raw)
         out["scheduled_device"] = "gpu"
         if self.gpu_id is not None:
             out["physical_gpu"] = int(self.gpu_id)
+        if available_gb is not None:
+            out["sieve_mem_available_gb_at_start"] = float(available_gb)
         out.update(self.evaluate(matrix_id))
         return out

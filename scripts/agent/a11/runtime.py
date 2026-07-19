@@ -18,6 +18,12 @@ def _set_common_thread_env(omp_threads: int) -> None:
     os.environ["OMP_DYNAMIC"] = "FALSE"
     os.environ["OMP_PROC_BIND"] = "close"
     os.environ["OMP_PLACES"] = "threads"
+    os.environ["OMP_WAIT_POLICY"] = "PASSIVE"
+    os.environ["KMP_BLOCKTIME"] = "0"
+
+    # Limit glibc arena proliferation across 48 long-lived worker processes.
+    # The main process sets this before spawn, so workers inherit it at startup.
+    os.environ.setdefault("MALLOC_ARENA_MAX", "2")
 
     # Keep nested BLAS pools from multiplying the 48 environment processes.
     os.environ["MKL_NUM_THREADS"] = "1"
@@ -159,6 +165,10 @@ def get_device():
     import torch
 
     torch.set_num_threads(MAIN_CPU_THREADS)
+    try:
+        torch.set_num_interop_threads(1)
+    except RuntimeError:
+        pass
     return torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 

@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from .config import ACT_EMB, CTX_DIM, DILATIONS, FEAT_C, GS_EMB, GS_LOC, NUM_GLOBALS
 
+
 class NoisyLinear(nn.Module):
     def __init__(self, in_features, out_features, std_init=1.0):
         super().__init__()
@@ -88,8 +89,8 @@ class FiLMAxialBlock(nn.Module):
 
 
 def _integral_region_mean(H, r0, r1, c0, c1, area):
-    I = F.pad(H, (1, 0, 1, 0)).cumsum(2).cumsum(3)
-    s = I[:, :, r1, c1] - I[:, :, r0, c1] - I[:, :, r1, c0] + I[:, :, r0, c0]
+    i = F.pad(H, (1, 0, 1, 0)).cumsum(2).cumsum(3)
+    s = i[:, :, r1, c1] - i[:, :, r0, c1] - i[:, :, r1, c0] + i[:, :, r0, c0]
     return s / area.view(1, 1, -1)
 
 

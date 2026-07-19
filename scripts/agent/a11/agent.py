@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import random
+from collections import defaultdict
 
 import numpy as np
 import torch
@@ -13,6 +14,7 @@ from .config import NUM_GLOBALS
 from .network import DimAgnosticQNet
 from .replay import MultiDimReplay
 from .runtime import get_device
+
 
 class DQNAgent:
     def __init__(
@@ -48,39 +50,49 @@ class DQNAgent:
         return self._spec_cache[dim]
 
     def act_envs(self, state_by_eid, epsilon):
-        groups = defaultdict(list)
-        for eid, st in state_by_eid.items():
-            groups[st["dim"]].append(eid)
-        out = {}
+        groups: dict[int, list[int]] = defaultdict(list)
+
+        for eid, state in state_by_eid.items():
+            groups[int(state["dim"])].append(eid)
+
+        actions = {}
+
         self.q_net.train()
         self.q_net.reset_noise()
+
         for dim, eids in groups.items():
             spec = self.spec(dim)
+
             cos = torch.as_tensor(
-                np.stack([state_by_eid[e]["cos"] for e in eids]),
+                np.stack([state_by_eid[eid]["cos"] for eid in eids]),
                 dtype=torch.float32,
                 device=self.device,
             )
             gs = torch.as_tensor(
-                np.stack([state_by_eid[e]["gs"] for e in eids]),
+                np.stack([state_by_eid[eid]["gs"] for eid in eids]),
                 dtype=torch.float32,
                 device=self.device,
             )
             glob = torch.as_tensor(
-                np.stack([state_by_eid[e]["globals"] for e in eids]),
+                np.stack([state_by_eid[eid]["globals"] for eid in eids]),
                 dtype=torch.float32,
                 device=self.device,
             )
+
             with torch.no_grad():
-                greedy = self.q_net(cos, gs, glob, spec).argmax(1).cpu().numpy()
-            A = spec["num_actions"]
-            for k, e in enumerate(eids):
-                out[e] = (
-                    random.randint(0, A - 1)
-                    if (epsilon > 0 and random.random() < epsilon)
-                    else int(greedy[k])
+                greedy_actions = (
+                    self.q_net(cos, gs, glob, spec).argmax(dim=1).cpu().numpy()
                 )
-        return out
+
+            num_actions = int(spec["num_actions"])
+
+            for batch_idx, eid in enumerate(eids):
+                if epsilon > 0.0 and random.random() < epsilon:
+                    actions[eid] = random.randint(0, num_actions - 1)
+                else:
+                    actions[eid] = int(greedy_actions[batch_idx])
+
+        return actions
 
     def remember(self, dim, s, a, r, ns, done):
         self.memory.add(
@@ -102,15 +114,21 @@ class DQNAgent:
         buf = self.memory.buffers[dim]
         batch, idxs, isw = buf.sample(self.batch_size)
         spec = self.spec(dim)
-        f32 = lambda arrs: torch.as_tensor(
-            np.stack(arrs).astype(np.float32), dtype=torch.float32, device=self.device
-        )
-        cos = f32([b[0] for b in batch])
-        gs = f32([b[1] for b in batch])
-        glob = f32([b[2] for b in batch])
-        ncos = f32([b[5] for b in batch])
-        ngs = f32([b[6] for b in batch])
-        nglob = f32([b[7] for b in batch])
+
+        def to_float_tensor(arrays):
+            stacked = np.stack(arrays).astype(np.float32, copy=False)
+            return torch.as_tensor(
+                stacked,
+                dtype=torch.float32,
+                device=self.device,
+            )
+
+        cos = to_float_tensor([b[0] for b in batch])
+        gs = to_float_tensor([b[1] for b in batch])
+        glob = to_float_tensor([b[2] for b in batch])
+        ncos = to_float_tensor([b[5] for b in batch])
+        ngs = to_float_tensor([b[6] for b in batch])
+        nglob = to_float_tensor([b[7] for b in batch])
         a = torch.as_tensor(
             [b[3] for b in batch], dtype=torch.int64, device=self.device
         ).unsqueeze(1)
@@ -141,7 +159,7 @@ class DQNAgent:
         self.q_net.train()
         self.q_net.reset_noise()
         self.target_net.reset_noise()
-        self.optimizer.zero_grad()
+        self.optimizer.zero_grad(set_to_none=True)
         total = 0.0
         for dim in chosen:
             loss = self._dim_loss(dim)
@@ -150,8 +168,12 @@ class DQNAgent:
         torch.nn.utils.clip_grad_norm_(self.q_net.parameters(), 0.75)
         self.optimizer.step()
         with torch.no_grad():
-            for tp, p in zip(self.target_net.parameters(), self.q_net.parameters()):
-                tp.data.mul_(1.0 - self.tau).add_(self.tau * p.data)
+            for target_param, online_param in zip(
+                self.target_net.parameters(),
+                self.q_net.parameters(),
+            ):
+                target_param.mul_(1.0 - self.tau)
+                target_param.add_(online_param, alpha=self.tau)
         return total / len(chosen)
 
     def step_scheduler(self):
@@ -159,11 +181,14 @@ class DQNAgent:
 
     def save(self, path, extra=None):
         extra = dict(extra or {})
-        extra["rng"] = {
+        rng_state = {
             "py": random.getstate(),
             "np": np.random.get_state(),
             "torch": torch.get_rng_state(),
         }
+        if self.device.type == "cuda" and torch.cuda.is_available():
+            rng_state["torch_cuda"] = torch.cuda.get_rng_state(self.device)
+        extra["rng"] = rng_state
         tmp = path + ".tmp"
         torch.save(
             {
@@ -185,13 +210,22 @@ class DQNAgent:
         self.target_net.load_state_dict(payload["target_net"])
         self.optimizer.load_state_dict(payload["optimizer"])
         self.scheduler.load_state_dict(payload["scheduler"])
-        extra = payload.get("extra", {})
+        extra = dict(payload.get("extra", {}))
         rng = extra.pop("rng", None)
         if rng:
             try:
                 random.setstate(rng["py"])
                 np.random.set_state(rng["np"])
                 torch.set_rng_state(rng["torch"])
+                if (
+                    self.device.type == "cuda"
+                    and torch.cuda.is_available()
+                    and "torch_cuda" in rng
+                ):
+                    torch.cuda.set_rng_state(
+                        rng["torch_cuda"],
+                        device=self.device,
+                    )
             except Exception:
                 pass
         return extra
