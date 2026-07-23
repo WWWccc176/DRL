@@ -1,23 +1,58 @@
 from __future__ import annotations
 
-import math
-
 import numpy as np
 
-from .config import BETA_REF, ACTION_BETA_RATIO
+from .config import (
+    ACTION_BETA_COUNT,
+    ACTION_BETA_MAX,
+    ACTION_BETA_MIN,
+    BETA_REF,
+    BGJ3_MIN_BETA,
+    ENUMERATION_MAX_BETA,
+    SIEVE_MIN_BETA,
+)
+
+
+def beta_values(dim: int) -> list[int]:
+    """Return the compact beta grid for one lattice dimension.
+
+    The grid starts at beta=21, reaches the full legal dimension (capped at 95),
+    and always contains the enumeration/BGJ2 and BGJ2/BGJ3 routing boundaries
+    whenever they are legal for the current dimension.
+    """
+    beta_max = min(int(dim), ACTION_BETA_MAX)
+    if beta_max < ACTION_BETA_MIN:
+        return []
+
+    raw = np.geomspace(ACTION_BETA_MIN, beta_max, ACTION_BETA_COUNT)
+    betas = {
+        max(ACTION_BETA_MIN, min(beta_max, int(round(value))))
+        for value in raw
+    }
+    betas.update({ACTION_BETA_MIN, beta_max})
+
+    for boundary in (ENUMERATION_MAX_BETA, SIEVE_MIN_BETA, BGJ3_MIN_BETA):
+        if ACTION_BETA_MIN <= boundary <= beta_max:
+            betas.add(boundary)
+
+    return sorted(betas)
 
 
 def build_action_list(dim: int):
-    """Return every legal (pos, beta).
+    """Return legal learned ``(pos, beta)`` actions.
 
-    beta = 3, 7, 11, ... <= ceil(ACTION_BETA_RATIO * dim)
-    pos  = 0, 1, 2, ... with pos + beta <= dim
+    Large blocks are expensive, so positions are sampled with a half-block
+    stride while always retaining both the leftmost and rightmost legal window.
+    This keeps the action space compact without dropping any routing boundary.
     """
-    beta_limit = math.ceil(ACTION_BETA_RATIO * dim)
-    actions = []
-    for beta in range(3, beta_limit + 1, 4):
-        for pos in range(dim - beta + 1):
-            actions.append((pos, beta))
+    actions: list[tuple[int, int]] = []
+    for beta in beta_values(dim):
+        final_pos = dim - beta
+        pos_step = max(1, beta // 2)
+        positions = list(range(0, final_pos + 1, pos_step))
+        if final_pos not in positions:
+            positions.append(final_pos)
+        actions.extend((pos, beta) for pos in sorted(set(positions)))
     return actions
 
 
@@ -25,10 +60,15 @@ def build_action_spec(dim: int, device):
     import torch
 
     actions = build_action_list(dim)
+    if not actions:
+        raise ValueError(
+            f"dimension {dim} is smaller than ACTION_BETA_MIN={ACTION_BETA_MIN}"
+        )
+
     poss = np.array([pos for pos, _ in actions], dtype=np.int64)
     betas = np.array([beta for _, beta in actions], dtype=np.int64)
     r0, r1 = poss, poss + betas
-    end_idx = poss + betas - 1
+    end_idx = np.clip(poss + betas - 1, 0, dim - 1)
     area = betas.astype(np.float32) ** 2
     emb = np.stack(
         [
@@ -44,14 +84,15 @@ def build_action_spec(dim: int, device):
     def tensor(x, dtype):
         return torch.as_tensor(x, dtype=dtype, device=device)
 
-    groups = {}
-    for k, (pos, beta) in enumerate(actions):
+    groups: dict[int, tuple[list[int], list[int]]] = {}
+    for index, (pos, beta) in enumerate(actions):
         groups.setdefault(beta, ([], []))
-        groups[beta][0].append(k)
+        groups[beta][0].append(index)
         groups[beta][1].append(pos)
+
     beta_groups = {
-        int(beta): (tensor(idx, torch.long), tensor(pos, torch.long))
-        for beta, (idx, pos) in groups.items()
+        int(beta): (tensor(indices, torch.long), tensor(positions, torch.long))
+        for beta, (indices, positions) in groups.items()
     }
 
     return {

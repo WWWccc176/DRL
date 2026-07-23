@@ -10,6 +10,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from a11.config import (
         AGENT_VERSION,
+        AUTO_ANALYZE_RESULTS,
         BATCH_SIZE,
         CAPACITY_PER_DIM,
         CHECKPOINT_FILE,
@@ -39,6 +40,7 @@ if __package__ in (None, ""):
 else:
     from .config import (
         AGENT_VERSION,
+        AUTO_ANALYZE_RESULTS,
         BATCH_SIZE,
         CAPACITY_PER_DIM,
         CHECKPOINT_FILE,
@@ -139,6 +141,7 @@ def main():
     print("=" * 80, flush=True)
 
     vec_env = None
+    training_completed = False
 
     try:
         vec_env = SubprocVecEnv(
@@ -185,6 +188,7 @@ def main():
             goal_threshold=GOAL_THRESHOLD,
             resume_extra=resume_extra,
         )
+        training_completed = True
 
     except KeyboardInterrupt:
         # Normally trainer.py consumes Ctrl+C and saves the checkpoint first.
@@ -198,6 +202,27 @@ def main():
         if vec_env is not None:
             vec_env.close()
         print("[A11] Worker shutdown complete.", flush=True)
+
+    if training_completed and AUTO_ANALYZE_RESULTS:
+        try:
+            if __package__ in (None, ""):
+                from a11.analysis import run_post_training_analysis
+            else:
+                from .analysis import run_post_training_analysis
+
+            print("[A11] Training completed. Starting automatic result analysis.", flush=True)
+            run_post_training_analysis(
+                RESULTS_DIR,
+                goal=GOAL_THRESHOLD,
+            )
+        except Exception as exc:
+            # The trained checkpoint and saved bases remain valid even when a
+            # plotting dependency is missing or one analysis artifact fails.
+            print(
+                f"[A11] Automatic analysis failed: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
 
 
 if __name__ == "__main__":

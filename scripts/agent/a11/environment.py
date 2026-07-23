@@ -53,6 +53,8 @@ class LatticeEnv:
         self.best_ratio = float("inf")
         self.best_defect = self.best_max_cos = self.best_min_cos = None
         self.best_vector = self.best_basis = None
+        self.initial_basis = None
+        self.best_action_path = []
         self.best_episode = 0
         self.episode_count = 0
         self.best_dirty = False
@@ -214,6 +216,14 @@ class LatticeEnv:
             log_vol=self.log_vol,
         )
 
+        self.initial_basis = parse_fplll(
+            self.backend.dump_matrix(self.initial_pool_id)
+        )
+        if not self.initial_basis:
+            raise RuntimeError(
+                f"failed to snapshot LLL+BKZ{bkz_beta} initial basis: {self.filepath}"
+            )
+
         self._log_initial_stage(
             f"BKZ{bkz_beta}",
             bkz_metrics,
@@ -268,7 +278,10 @@ class LatticeEnv:
 
     def reset(self):
         self.current_step = 0
+        # Rolling action-index history is used only for repeat penalties.
         self.action_history = []
+        # Full structured path is retained for exact result reproduction.
+        self.episode_action_path = []
         self.episode_count += 1
         if self.current_pool_id >= 0:
             try:
@@ -328,15 +341,14 @@ class LatticeEnv:
             matrix = parse_fplll(self.backend.dump_matrix(self.current_pool_id))
             if matrix:
                 self.best_vector, self.best_basis = matrix[0], matrix
+            self.best_action_path = [dict(item) for item in self.episode_action_path]
             self.best_dirty = True
 
     def pop_best_update(self):
         if not self.best_dirty:
             return None
         self.best_dirty = False
-        payload = self.get_best_payload()
-        payload.pop("basis", None)
-        return payload
+        return self.get_best_payload()
 
     def _exec_action(self, pos: int, beta: int):
         return self.backend.reduce(self.current_pool_id, pos, beta)
@@ -352,12 +364,39 @@ class LatticeEnv:
 
         self.last_info = self._exec_action(pos, beta)
         self.current_step += 1
+
+        self.episode_action_path.append(
+            {
+                "kind": "agent_action",
+                "step": self.current_step,
+                "action_idx": int(action_idx),
+                "pos": int(pos),
+                "beta": int(beta),
+                "backend": str(self.last_info.get("backend", "adaptive")),
+                "accepted": bool(self.last_info.get("accepted", True)),
+                "time_ms": float(self.last_info.get("time_ms", 0.0)),
+            }
+        )
+
         done = self.current_step >= self.max_steps
 
         if done:
+            polish_beta = min(FINAL_POLISH_BETA, self.dim)
             self.last_info = self.backend.final_polish(
                 self.current_pool_id,
-                min(FINAL_POLISH_BETA, self.dim),
+                polish_beta,
+            )
+            self.episode_action_path.append(
+                {
+                    "kind": "final_polish",
+                    "step": self.current_step,
+                    "action_idx": None,
+                    "pos": 0,
+                    "beta": int(polish_beta),
+                    "backend": str(self.last_info.get("backend", "final_polish")),
+                    "accepted": bool(self.last_info.get("accepted", True)),
+                    "time_ms": float(self.last_info.get("time_ms", 0.0)),
+                }
             )
 
         state, new_logb1, new_ratio, new_maxcos, _, new_logdef = self._build_state(
@@ -434,6 +473,8 @@ class LatticeEnv:
             "min_cos": self.best_min_cos,
             "vector": self.best_vector,
             "basis": self.best_basis,
+            "initial_basis": self.initial_basis,
+            "action_path": [dict(item) for item in self.best_action_path],
             "episode": self.best_episode,
         }
 

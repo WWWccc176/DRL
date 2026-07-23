@@ -51,7 +51,7 @@ GS_LOC = 3
 
 DILATIONS = [1, 2, 4, 8]
 
-BETA_REF = 60.0
+BETA_REF = 95.0
 DIM_REF = 60.0
 
 NUM_GLOBALS = 7
@@ -69,11 +69,27 @@ ENVS_PER_FILE = 2
 
 STATE_PHASE_PERIOD = 3
 
-INITIAL_BKZ_BETA = 40
+INITIAL_BKZ_BETA = 20
 FINAL_POLISH_BETA = 45
 
 DETAIL_EVERY_CYCLES = 10
-ACTION_BETA_RATIO = 0.8
+
+# Learned local-reduction actions start strictly above the global BKZ-20
+# initialization. A compact geometric beta grid is used, with backend routing
+# boundaries inserted explicitly so no algorithm transition disappears through
+# rounding.
+ACTION_BETA_MIN = 21
+ACTION_BETA_MAX = 95
+ACTION_BETA_COUNT = 9
+ENUMERATION_MAX_BETA = 52
+SIEVE_MIN_BETA = 53
+BGJ3_MIN_BETA = 95
+
+# Run the integrated result summarizer and cosine-heatmap generator after a
+# normally completed training job. Set A11_AUTO_ANALYZE=0 to disable it.
+AUTO_ANALYZE_RESULTS = os.environ.get("A11_AUTO_ANALYZE", "1").strip().lower() not in {
+    "0", "false", "no", "off"
+}
 
 
 # ============================================================
@@ -140,13 +156,12 @@ GPU_REDUCTIONS_PER_DEVICE = 1
 GPU_SIEVE_MIN_AVAILABLE_GB = 0.0
 GPU_SIEVE_MEMORY_POLL_SECONDS = 0.0
 
-# Native adaptive routing threshold.
-# The action grid uses 3, 7, 11, ..., so the first ordinary action
-# above this threshold is normally beta=43.
+# Native adaptive routing threshold. Keep the environment override for
+# deployment compatibility, but the learned action grid always contains beta=53.
 SIEVE_MIN_BETA = int(
     os.environ.get(
         "A11_SIEVE_MIN_BETA",
-        "40",
+        str(SIEVE_MIN_BETA),
     )
 )
 
