@@ -33,3 +33,6 @@ drl_app/*.pyd
 # 忽略保存的模型权重和经验池文件
 *.pkl
 *.pth
+.zip
+.tar
+.7z

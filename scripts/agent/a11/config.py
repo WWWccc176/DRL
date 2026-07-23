@@ -170,19 +170,19 @@ SIEVE_MIN_BETA = int(
 # Budgeted sieve action
 # ============================================================
 
-# Stop after collecting this many exact recovered candidates.
+# The native persistent worker returns one exact recovered block per action.
 SIEVE_MAX_CANDIDATES = int(
     os.environ.get(
         "A11_SIEVE_MAX_CANDIDATES",
-        "4",
+        "1",
     )
 )
 
-# Maximum number of complete BGJ stages for one RL action.
+# Exactly one complete BGJ invocation is allowed for one RL action.
 SIEVE_MAX_ROUNDS = int(
     os.environ.get(
         "A11_SIEVE_MAX_ROUNDS",
-        "6",
+        "1",
     )
 )
 

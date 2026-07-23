@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdint>
 #include <exception>
+#include <limits>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -35,6 +36,19 @@ std::mutex g_matrix_pool_mutex;
 
 constexpr int kAdaptiveSieveThreshold = lattice_backend::kSieveThreshold;
 constexpr int kCudaFeatureMinDimension = 256;
+
+double norm_from_log(double log_norm) {
+    if (!std::isfinite(log_norm)) {
+        return log_norm < 0.0 ? 0.0 : std::numeric_limits<double>::infinity();
+    }
+    if (log_norm >= std::log(std::numeric_limits<double>::max())) {
+        return std::numeric_limits<double>::infinity();
+    }
+    if (log_norm <= std::log(std::numeric_limits<double>::min())) {
+        return 0.0;
+    }
+    return std::exp(log_norm);
+}
 
 py::dict reduce_result_to_dict(const lattice_backend::ReduceResult& result) {
     py::dict out;
@@ -256,6 +270,345 @@ py::dict reduce_bkz2_global_api(int64_t matrix_id, int beta, int loops) {
     return reduce_result_to_dict(result);
 }
 
+std::string extract_block_api(int64_t matrix_id, int pos, int beta) {
+    std::lock_guard<std::mutex> lock(g_matrix_pool_mutex);
+    const auto iterator = g_matrix_pool.find(matrix_id);
+    if (iterator == g_matrix_pool.end()) {
+        throw std::runtime_error("invalid matrix id");
+    }
+
+    const Matrix& basis = iterator->second;
+    if (pos < 0 || beta <= 0 || pos + beta > basis.get_rows()) {
+        throw std::runtime_error("invalid exact block extraction range");
+    }
+
+    return lattice_backend::dump_matrix(
+        lattice_backend::copy_block(basis, pos, beta));
+}
+
+py::dict sieve_reduce_serialized_api(
+    const std::string& matrix_text,
+    int beta,
+    int max_candidates,
+    int max_rounds,
+    int64_t max_pairs,
+    double time_budget_s,
+    int memory_budget_mb,
+    double min_b1_rel_improvement,
+    double min_logpot_improvement,
+    int free_dim,
+    int free_dim_cap) {
+    Matrix block = lattice_backend::parse_matrix(matrix_text);
+    if (beta != block.get_rows() || beta < 40 ||
+        beta > lattice_backend::kMaximumActionBeta ||
+        block.get_cols() < block.get_rows()) {
+        throw std::runtime_error(
+            "serialized BGJ block must be full-row-rank shaped with beta in [40, 95]");
+    }
+
+    const Matrix original = block;
+    const int64_t task_id =
+        g_next_serial_task_id.fetch_sub(1, std::memory_order_relaxed);
+    lattice_backend::ReduceResult result;
+    result.backend = "persistent_bgj_sieve_worker";
+    result.actual_beta = beta;
+
+    double potential_before = std::numeric_limits<double>::quiet_NaN();
+    double potential_after = std::numeric_limits<double>::quiet_NaN();
+    double log_b1_before = std::numeric_limits<double>::quiet_NaN();
+    double log_b1_after = std::numeric_limits<double>::quiet_NaN();
+    double b1_relative_improvement = 0.0;
+    double logpot_improvement = 0.0;
+    const auto started = std::chrono::steady_clock::now();
+
+    {
+        py::gil_scoped_release release;
+
+        potential_before = lattice_backend::log_potential(original);
+        log_b1_before = lattice_backend::first_gso_log_norm(original);
+
+        if (!lattice_backend::run_bkz2_preconditioner(
+                block, lattice_backend::PreconditionerProfile::normal,
+                &result.error)) {
+            result.stop_reason = lattice_backend::StopReason::precondition_failed;
+        } else {
+            lattice_backend::SieveBudget budget =
+                lattice_backend::sieve_budget_from_environment();
+
+            // One complete BGJ invocation is the action contract. The Python
+            // argument is retained for API compatibility but cannot increase
+            // this limit.
+            budget.max_bgj_calls = 1;
+            budget.progressive = false;
+            if (std::isfinite(time_budget_s) && time_budget_s > 0.0) {
+                budget.max_wall_seconds = time_budget_s;
+            }
+
+            const lattice_backend::SieveRunInfo sieve =
+                lattice_backend::run_local_extreme_sieve(
+                    block, task_id, 0, budget);
+            result.completed = sieve.completed;
+            result.exact = sieve.exact;
+            result.stop_reason = sieve.stop_reason;
+            result.error = sieve.error;
+            result.sieve_dimension = sieve.final_csd;
+            result.dimension_for_free = sieve.dimension_for_free;
+            result.bgj_calls = sieve.bgj_calls;
+            result.database_vectors = sieve.vectors;
+
+            // Exact post-BKZ/LLL is deliberately performed only by
+            // apply_external_block() in the process that owns the full MPZ
+            // basis. The GPU worker returns the exactly recovered sieve block.
+        }
+
+        potential_after = lattice_backend::log_potential(block);
+        log_b1_after = lattice_backend::first_gso_log_norm(block);
+        logpot_improvement = potential_before - potential_after;
+        const double exponent = std::max(
+            -700.0, std::min(700.0, log_b1_after - log_b1_before));
+        b1_relative_improvement = 1.0 - std::exp(exponent);
+
+        result.changed = result.completed && result.exact &&
+                         !lattice_backend::matrices_equal(original, block);
+        result.non_worsening = result.completed && result.exact &&
+                               std::isfinite(potential_after) &&
+                               potential_after <= potential_before + 1e-10;
+        result.accepted = result.changed && result.non_worsening;
+        result.quality_target_reached = result.completed && result.exact &&
+            (b1_relative_improvement >= min_b1_rel_improvement ||
+             logpot_improvement >= min_logpot_improvement);
+
+        if (result.completed && !result.changed) {
+            result.stop_reason = lattice_backend::StopReason::no_change;
+        } else if (result.completed && result.changed &&
+                   !result.non_worsening) {
+            result.stop_reason =
+                lattice_backend::StopReason::non_worsening_rejected;
+        } else if (result.accepted) {
+            result.stop_reason = lattice_backend::StopReason::completed;
+        }
+    }
+
+    result.time_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count();
+
+    py::dict out = reduce_result_to_dict(result);
+    const std::string serialized_block = lattice_backend::dump_matrix(block);
+    out["block_matrix"] = serialized_block;
+    out["matrix"] = serialized_block;
+    out["exact_recovery"] = result.exact;
+    out["potential_before"] = potential_before;
+    out["potential_after"] = potential_after;
+    out["log_b1_before"] = log_b1_before;
+    out["log_b1_after"] = log_b1_after;
+    out["b1_relative_improvement"] = b1_relative_improvement;
+    out["logpot_improvement"] = logpot_improvement;
+    out["requested_max_candidates"] = max_candidates;
+    out["requested_max_rounds"] = max_rounds;
+    out["requested_max_pairs"] = max_pairs;
+    out["requested_memory_budget_mb"] = memory_budget_mb;
+    out["requested_free_dim"] = free_dim;
+    out["requested_free_dim_cap"] = free_dim_cap;
+    out["effective_max_bgj_calls"] = 1;
+    return out;
+}
+
+py::dict apply_external_block_api(
+    int64_t matrix_id,
+    int pos,
+    const std::string& block_text,
+    int post_bkz_loops,
+    bool run_full_lll_after) {
+    Matrix candidate = lattice_backend::parse_matrix(block_text);
+    lattice_backend::ReduceResult result;
+    result.backend = "apply_external_exact_block";
+    result.actual_beta = candidate.get_rows();
+    const auto started = std::chrono::steady_clock::now();
+
+    double potential_before = std::numeric_limits<double>::quiet_NaN();
+    double potential_after = std::numeric_limits<double>::quiet_NaN();
+    double log_b1_before = std::numeric_limits<double>::quiet_NaN();
+    double log_b1_after = std::numeric_limits<double>::quiet_NaN();
+
+    {
+        py::gil_scoped_release release;
+        std::lock_guard<std::mutex> lock(g_matrix_pool_mutex);
+        const auto iterator = g_matrix_pool.find(matrix_id);
+        if (iterator == g_matrix_pool.end()) {
+            throw std::runtime_error("invalid matrix id");
+        }
+
+        Matrix& basis = iterator->second;
+        if (candidate.get_rows() <= 0 || pos < 0 ||
+            pos + candidate.get_rows() > basis.get_rows() ||
+            candidate.get_cols() != basis.get_cols()) {
+            result.stop_reason = lattice_backend::StopReason::invalid_input;
+            result.error = "external exact block shape or position mismatch";
+        } else {
+            Matrix full_before = basis;
+            const Matrix local_before = lattice_backend::copy_block(
+                basis, pos, candidate.get_rows());
+            potential_before = lattice_backend::log_potential(full_before);
+            log_b1_before = lattice_backend::first_gso_log_norm(full_before);
+
+            result.exact = lattice_backend::validate_exact_unimodular_basis(
+                local_before, candidate, &result.error);
+            if (!result.exact) {
+                result.stop_reason =
+                    lattice_backend::StopReason::exact_recovery_failed;
+            } else {
+                if (post_bkz_loops > 0) {
+                    if (!lattice_backend::run_bkz2(
+                            candidate,
+                            std::min(30, candidate.get_rows()),
+                            post_bkz_loops,
+                            1.0,
+                            &result.error)) {
+                        result.stop_reason =
+                            lattice_backend::StopReason::precondition_failed;
+                    }
+                }
+
+                if (result.stop_reason == lattice_backend::StopReason::none) {
+                    fplll::lll_reduction(candidate, 0.999);
+
+                    if (!lattice_backend::validate_exact_unimodular_basis(
+                            local_before, candidate, &result.error)) {
+                        result.exact = false;
+                        result.stop_reason =
+                            lattice_backend::StopReason::exact_recovery_failed;
+                    } else if (!lattice_backend::write_block(
+                                   basis, pos, candidate, &result.error)) {
+                        result.stop_reason =
+                            lattice_backend::StopReason::invalid_input;
+                    } else {
+                        if (run_full_lll_after) {
+                            fplll::lll_reduction(basis, 0.999);
+                        }
+
+                        result.completed = true;
+                        potential_after = lattice_backend::log_potential(basis);
+                        log_b1_after =
+                            lattice_backend::first_gso_log_norm(basis);
+                        result.changed = !lattice_backend::matrices_equal(
+                            full_before, basis);
+                        result.non_worsening =
+                            std::isfinite(potential_after) &&
+                            potential_after <= potential_before + 1e-10;
+                        result.accepted =
+                            result.changed && result.non_worsening;
+
+                        if (!result.non_worsening) {
+                            basis = std::move(full_before);
+                            result.accepted = false;
+                            result.stop_reason = lattice_backend::StopReason::
+                                non_worsening_rejected;
+                            if (result.error.empty()) {
+                                result.error =
+                                    "external block failed the full-basis transaction gate";
+                            }
+                        } else {
+                            result.stop_reason = result.changed
+                                ? lattice_backend::StopReason::completed
+                                : lattice_backend::StopReason::no_change;
+                        }
+                    }
+                }
+            }
+
+            if (!result.completed) {
+                potential_after = potential_before;
+                log_b1_after = log_b1_before;
+            }
+        }
+    }
+
+    result.time_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count();
+    py::dict out = reduce_result_to_dict(result);
+    out["pot_before"] = potential_before;
+    out["pot_after"] = potential_after;
+    out["b1_before"] = norm_from_log(log_b1_before);
+    out["b1_after"] = norm_from_log(log_b1_after);
+    out["log_b1_before"] = log_b1_before;
+    out["log_b1_after"] = log_b1_after;
+    return out;
+}
+
+py::dict full_lll_api(int64_t matrix_id) {
+    lattice_backend::ReduceResult result;
+    result.backend = "full_lll";
+    const auto started = std::chrono::steady_clock::now();
+    double potential_before = std::numeric_limits<double>::quiet_NaN();
+    double potential_after = std::numeric_limits<double>::quiet_NaN();
+    double log_b1_before = std::numeric_limits<double>::quiet_NaN();
+    double log_b1_after = std::numeric_limits<double>::quiet_NaN();
+
+    {
+        py::gil_scoped_release release;
+        std::lock_guard<std::mutex> lock(g_matrix_pool_mutex);
+        const auto iterator = g_matrix_pool.find(matrix_id);
+        if (iterator == g_matrix_pool.end()) {
+            throw std::runtime_error("invalid matrix id");
+        }
+
+        Matrix& basis = iterator->second;
+        Matrix before = basis;
+        result.actual_beta = basis.get_rows();
+        potential_before = lattice_backend::log_potential(before);
+        log_b1_before = lattice_backend::first_gso_log_norm(before);
+
+        try {
+            fplll::lll_reduction(basis, 0.999);
+            result.completed = true;
+            result.exact = true;
+            potential_after = lattice_backend::log_potential(basis);
+            log_b1_after = lattice_backend::first_gso_log_norm(basis);
+            result.changed = !lattice_backend::matrices_equal(before, basis);
+            result.non_worsening = std::isfinite(potential_after) &&
+                                   potential_after <= potential_before + 1e-10;
+            result.accepted = result.changed && result.non_worsening;
+
+            if (!result.non_worsening) {
+                basis = std::move(before);
+                potential_after = potential_before;
+                log_b1_after = log_b1_before;
+                result.accepted = false;
+                result.stop_reason =
+                    lattice_backend::StopReason::non_worsening_rejected;
+                result.error = "full LLL failed the full-basis transaction gate";
+            } else {
+                result.stop_reason = result.changed
+                    ? lattice_backend::StopReason::completed
+                    : lattice_backend::StopReason::no_change;
+            }
+        } catch (const std::exception& ex) {
+            basis = std::move(before);
+            result.stop_reason = lattice_backend::StopReason::exception;
+            result.error = ex.what();
+            potential_after = potential_before;
+            log_b1_after = log_b1_before;
+        } catch (...) {
+            basis = std::move(before);
+            result.stop_reason = lattice_backend::StopReason::exception;
+            result.error = "full LLL failed with an unknown exception";
+            potential_after = potential_before;
+            log_b1_after = log_b1_before;
+        }
+    }
+
+    result.time_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count();
+    py::dict out = reduce_result_to_dict(result);
+    out["pot_before"] = potential_before;
+    out["pot_after"] = potential_after;
+    out["b1_before"] = norm_from_log(log_b1_before);
+    out["b1_after"] = norm_from_log(log_b1_after);
+    out["log_b1_before"] = log_b1_before;
+    out["log_b1_after"] = log_b1_after;
+    return out;
+}
+
 py::dict reduce_sieve_block_api(int64_t matrix_id, int pos, int beta) {
     lattice_backend::ReduceResult result;
     result.backend = "local_bgj_sieve_final";
@@ -380,6 +733,28 @@ PYBIND11_MODULE(my_project_backend, module) {
                py::arg("bool_sieve"));
     module.def("reduce_bkz2_global", &reduce_bkz2_global_api,
                py::arg("matrix_id"), py::arg("beta"), py::arg("loops") = 1);
+    module.def("extract_block", &extract_block_api,
+               py::arg("matrix_id"), py::arg("pos"), py::arg("beta"),
+               "Serialize one exact MPZ row block owned by the current process.");
+    module.def("sieve_reduce_serialized", &sieve_reduce_serialized_api,
+               py::arg("matrix_str"), py::arg("beta"),
+               py::arg("max_candidates") = 1,
+               py::arg("max_rounds") = 1,
+               py::arg("max_pairs") = 0,
+               py::arg("time_budget_s") = 0.0,
+               py::arg("memory_budget_mb") = 0,
+               py::arg("min_b1_rel_improvement") = 0.0,
+               py::arg("min_logpot_improvement") = 0.0,
+               py::arg("free_dim") = -1,
+               py::arg("free_dim_cap") = 0,
+               "Persistent-worker BGJ entry point. Exactly one complete BGJ invocation is allowed per call.");
+    module.def("apply_external_block", &apply_external_block_api,
+               py::arg("matrix_id"), py::arg("pos"), py::arg("matrix_str"),
+               py::arg("post_bkz_loops") = 0,
+               py::arg("run_full_lll_after") = false,
+               "Validate an exact unimodular external block and commit it through the full-basis non-worsening gate.");
+    module.def("full_lll", &full_lll_api, py::arg("matrix_id"),
+               "Run exact full-basis LLL with rollback on transaction-metric worsening.");
     module.def("reduce_sieve_block", &reduce_sieve_block_api,
                py::arg("matrix_id"), py::arg("pos"), py::arg("beta"));
     module.def("reduce_serialized_block", &reduce_serialized_block_api,

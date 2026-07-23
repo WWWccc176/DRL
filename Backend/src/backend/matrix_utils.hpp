@@ -35,6 +35,14 @@ bool recover_exact_unimodular_basis(const Matrix& original,
                                     Matrix& recovered,
                                     std::string* error = nullptr);
 
+// Verify that `candidate` is exactly U * original for an integral
+// unimodular row transform U. This is used when a serialized block returns
+// from a persistent GPU worker and must be committed to the process-local
+// exact MPZ matrix pool.
+bool validate_exact_unimodular_basis(const Matrix& original,
+                                     const Matrix& candidate,
+                                     std::string* error = nullptr);
+
 std::uint64_t matrix_fingerprint(const Matrix& B);
 
 }  // namespace lattice_backend

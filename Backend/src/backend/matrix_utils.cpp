@@ -528,6 +528,29 @@ bool recover_exact_unimodular_basis(const Matrix& original,
     return true;
 }
 
+bool validate_exact_unimodular_basis(const Matrix& original,
+                                     const Matrix& candidate,
+                                     std::string* error) {
+    if (original.get_rows() <= 0 || original.get_cols() <= 0 ||
+        candidate.get_rows() != original.get_rows() ||
+        candidate.get_cols() != original.get_cols()) {
+        return fail(error, "candidate block shape does not match the original block");
+    }
+
+    std::vector<std::vector<mpz_class>> transform;
+    if (!recover_row_transform(original, candidate, transform, error)) {
+        return false;
+    }
+
+    const mpz_class determinant = bareiss_determinant(transform);
+    if (determinant != 1 && determinant != -1) {
+        return fail(error,
+                    "candidate block is not related by a unimodular row transform");
+    }
+
+    return true;
+}
+
 std::uint64_t matrix_fingerprint(const Matrix& B) {
     // FNV-1a over a stable textual representation. This is a cache/task identity,
     // not a cryptographic digest.
