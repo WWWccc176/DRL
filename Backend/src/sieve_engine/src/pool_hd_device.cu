@@ -16,8 +16,10 @@ void copy(float *dst, float *src, long n);
 
 static std::atomic<int> ck_allocator_started{0};
 
+#if LATTICE_USE_NUMA
 #include <numa.h>
 #include <numaif.h>
+#endif
 #include <sys/mman.h>
 #include <fcntl.h>
 
@@ -64,9 +66,13 @@ struct chunk_allocator_t {
     }
 
     void _ck_allocator_start() {
+#if LATTICE_USE_NUMA
         struct bitmask *nodes = numa_get_mems_allowed();
-        numa_set_interleave_mask(nodes);
-        numa_bitmask_free(nodes);
+        if (nodes) {
+            numa_set_interleave_mask(nodes);
+            numa_bitmask_free(nodes);
+        }
+#endif
 
         cached_chunks = (chunk_t *) malloc(max_cached_chunks * sizeof(chunk_t));
         pthread_spin_init(&cache_lock, PTHREAD_PROCESS_SHARED);

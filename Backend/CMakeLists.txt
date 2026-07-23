@@ -21,6 +21,7 @@ set(LATTICE_BWC_DRAM_GB 6 CACHE STRING "Bucket cache DRAM budget in GiB")
 set(LATTICE_SWC_DRAM_GB 2 CACHE STRING "Solution cache DRAM budget in GiB")
 set(LATTICE_UT_TABLE_DRAM_GB 6 CACHE STRING "UID table DRAM budget in GiB")
 set(LATTICE_UT_BUFFER_DRAM_GB 3 CACHE STRING "UID buffer DRAM budget in GiB")
+option(LATTICE_ENABLE_NUMA "Enable NUMA interleaving when libnuma is available" ON)
 
 
 # ============================================================
@@ -89,21 +90,33 @@ if(NOT GMP_LIBRARY)
     message(FATAL_ERROR "Could not find GMP library")
 endif()
 
-find_path(NUMA_INCLUDE_DIR NAMES numa.h)
-find_library(NUMA_LIBRARY NAMES numa)
+find_library(GMPXX_LIBRARY NAMES gmpxx)
+if(NOT GMPXX_LIBRARY)
+    message(FATAL_ERROR "Could not find GMP C++ library (gmpxx)")
+endif()
 
-if(NOT NUMA_INCLUDE_DIR OR NOT NUMA_LIBRARY)
-    message(
-        FATAL_ERROR
-        "Could not find libnuma headers/library. On Arch/Manjaro install: sudo pacman -S numactl"
-    )
+set(LATTICE_USE_NUMA 0)
+if(LATTICE_ENABLE_NUMA)
+    find_path(NUMA_INCLUDE_DIR NAMES numa.h)
+    find_library(NUMA_LIBRARY NAMES numa)
+    if(NUMA_INCLUDE_DIR AND NUMA_LIBRARY)
+        set(LATTICE_USE_NUMA 1)
+        message(STATUS "NUMA support: enabled")
+    else()
+        message(WARNING "libnuma was not found; building with NUMA interleaving disabled")
+    endif()
+else()
+    message(STATUS "NUMA support: disabled by configuration")
 endif()
 
 message(STATUS "FPLLL_LIBRARY: ${FPLLL_LIBRARY}")
 message(STATUS "NTL_LIBRARY: ${NTL_LIBRARY}")
 message(STATUS "GMP_LIBRARY: ${GMP_LIBRARY}")
-message(STATUS "NUMA_INCLUDE_DIR: ${NUMA_INCLUDE_DIR}")
-message(STATUS "NUMA_LIBRARY: ${NUMA_LIBRARY}")
+message(STATUS "GMPXX_LIBRARY: ${GMPXX_LIBRARY}")
+if(LATTICE_USE_NUMA)
+    message(STATUS "NUMA_INCLUDE_DIR: ${NUMA_INCLUDE_DIR}")
+    message(STATUS "NUMA_LIBRARY: ${NUMA_LIBRARY}")
+endif()
 
 
 # ============================================================
@@ -233,7 +246,7 @@ target_include_directories(
     PUBLIC
         src/sieve_engine/include
         src/sieve_engine/dep
-        ${NUMA_INCLUDE_DIR}
+        $<$<BOOL:${LATTICE_USE_NUMA}>:${NUMA_INCLUDE_DIR}>
 )
 
 target_compile_definitions(
@@ -245,6 +258,7 @@ target_compile_definitions(
         LATTICE_SWC_DRAM_GB=${LATTICE_SWC_DRAM_GB}
         LATTICE_UT_TABLE_DRAM_GB=${LATTICE_UT_TABLE_DRAM_GB}
         LATTICE_UT_BUFFER_DRAM_GB=${LATTICE_UT_BUFFER_DRAM_GB}
+        LATTICE_USE_NUMA=${LATTICE_USE_NUMA}
 )
 
 target_compile_options(
@@ -280,8 +294,9 @@ target_link_libraries(
     local_sieve_engine
     PUBLIC
         ${NTL_LIBRARY}
+        ${GMPXX_LIBRARY}
         ${GMP_LIBRARY}
-        ${NUMA_LIBRARY}
+        $<$<BOOL:${LATTICE_USE_NUMA}>:${NUMA_LIBRARY}>
         OpenMP::OpenMP_CXX
         Threads::Threads
         CUDA::cudart
@@ -311,7 +326,7 @@ target_include_directories(
         src/cuda
         src/sieve_engine/include
         src/sieve_engine/dep
-        ${NUMA_INCLUDE_DIR}
+        $<$<BOOL:${LATTICE_USE_NUMA}>:${NUMA_INCLUDE_DIR}>
 )
 
 target_compile_definitions(
@@ -354,8 +369,9 @@ target_link_libraries(
         local_sieve_engine
         ${FPLLL_LIBRARY}
         ${NTL_LIBRARY}
+        ${GMPXX_LIBRARY}
         ${GMP_LIBRARY}
-        ${NUMA_LIBRARY}
+        $<$<BOOL:${LATTICE_USE_NUMA}>:${NUMA_LIBRARY}>
         OpenMP::OpenMP_CXX
         Threads::Threads
         CUDA::cudart

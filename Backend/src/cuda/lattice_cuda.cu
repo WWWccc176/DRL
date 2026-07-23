@@ -1,178 +1,172 @@
 #include "lattice_cuda.h"
-//#include <cuda_runtime.h>
-//#include <mutex>
-//
-//static std::mutex g_cuda_mu;
-//static bool g_checked = false, g_avail = false;
-//
-//// 复用设备缓冲，避免每步 cudaMalloc/Free
-//static double* d_M = nullptr; static size_t cap_M = 0;
-//static double* d_G = nullptr; static size_t cap_G = 0;
-//static float*  d_C = nullptr; static size_t cap_C = 0;
-//
-//bool cuda_is_available() {
-//    std::lock_guard<std::mutex> lk(g_cuda_mu);
-//    if (!g_checked) {
-//        int cnt = 0;
-//        cudaError_t e = cudaGetDeviceCount(&cnt);
-//        g_avail = (e == cudaSuccess && cnt > 0);
-//        g_checked = true;
-//    }
-//    return g_avail;
-//}
-//
-//// 每个线程算一个 (i,j) 内积 (i>=j), 对称写回
-//__global__ void gram_kernel(const double* __restrict__ M, int n, int cols,
-//                            double* __restrict__ G) {
-//    int i = blockIdx.y * blockDim.y + threadIdx.y;
-//    int j = blockIdx.x * blockDim.x + threadIdx.x;
-//    if (i < n && j < n && i >= j) {
-//        double s = 0.0;
-//        const double* ri = M + (size_t)i * cols;
-//        const double* rj = M + (size_t)j * cols;
-//        for (int k = 0; k < cols; ++k) s += ri[k] * rj[k];
-//        G[(size_t)i * n + j] = s;
-//        G[(size_t)j * n + i] = s;
-//    }
-//}
-//
-//// 由 Gram 归一化得到严格下三角 |cos|
-//__global__ void cosine_kernel(const double* __restrict__ G, int n,
-//                              float* __restrict__ C) {
-//    int i = blockIdx.y * blockDim.y + threadIdx.y;
-//    int j = blockIdx.x * blockDim.x + threadIdx.x;
-//    if (i < n && j < n) {
-//        if (i > j) {
-//            double denom = sqrt(G[(size_t)i * n + i] * G[(size_t)j * n + j]) + 1e-20;
-//            C[(size_t)i * n + j] = (float)fabs(G[(size_t)i * n + j] / denom);
-//        } else {
-//            C[(size_t)i * n + j] = 0.0f;
-//        }
-//    }
-//}
-//
-//static bool ensure_cap(void** ptr, size_t* cap, size_t need) {
-//    if (*cap >= need) return true;
-//    if (*ptr) cudaFree(*ptr);
-//    *ptr = nullptr; *cap = 0;
-//    if (cudaMalloc(ptr, need) != cudaSuccess) return false;
-//    *cap = need;
-//    return true;
-//}
-//
-//bool cuda_gram_cosine(const double* M, int n, int cols,
-//                      double* G_out, float* cosL_out) {
-//    if (n <= 0 || cols <= 0) return false;
-//    if (!cuda_is_available()) return false;
-//
-//    std::lock_guard<std::mutex> lk(g_cuda_mu);
-//    size_t szM = (size_t)n * cols * sizeof(double);
-//    size_t szG = (size_t)n * n   * sizeof(double);
-//    size_t szC = (size_t)n * n   * sizeof(float);
-//
-//    if (!ensure_cap((void**)&d_M, &cap_M, szM)) return false;
-//    if (!ensure_cap((void**)&d_G, &cap_G, szG)) return false;
-//    if (!ensure_cap((void**)&d_C, &cap_C, szC)) return false;
-//
-//    if (cudaMemcpy(d_M, M, szM, cudaMemcpyHostToDevice) != cudaSuccess) return false;
-//
-//    dim3 blk(16, 16);
-//    dim3 grd((n + 15) / 16, (n + 15) / 16);
-//    gram_kernel<<<grd, blk>>>(d_M, n, cols, d_G);
-//    cosine_kernel<<<grd, blk>>>(d_G, n, d_C);
-//
-//    if (cudaDeviceSynchronize() != cudaSuccess) return false;
-//    if (cudaMemcpy(G_out, d_G, szG, cudaMemcpyDeviceToHost) != cudaSuccess) return false;
-//    if (cudaMemcpy(cosL_out, d_C, szC, cudaMemcpyDeviceToHost) != cudaSuccess) return false;
-//    return true;
-//}
-#include "lattice_cuda.h"
-#include <cuda_runtime.h>
-#include <mutex>
-#include <vector>
-#include <cmath>
 
-static std::mutex g_cuda_mu;
+#include <cuda_runtime.h>
+
+#include <cmath>
+#include <cstddef>
+#include <mutex>
+
+namespace {
+
+std::mutex g_cuda_mutex;
+bool g_availability_checked = false;
+bool g_cuda_available = false;
+
+struct DeviceBuffers {
+    double* matrix = nullptr;
+    double* gram = nullptr;
+    float* cosine = nullptr;
+    double* statistics = nullptr;
+    std::size_t matrix_capacity = 0;
+    std::size_t gram_capacity = 0;
+    std::size_t cosine_capacity = 0;
+
+    ~DeviceBuffers() {
+        if (matrix) cudaFree(matrix);
+        if (gram) cudaFree(gram);
+        if (cosine) cudaFree(cosine);
+        if (statistics) cudaFree(statistics);
+    }
+
+    static bool reserve(void** pointer, std::size_t& capacity,
+                        std::size_t required) {
+        if (capacity >= required) return true;
+        if (*pointer) {
+            cudaFree(*pointer);
+            *pointer = nullptr;
+            capacity = 0;
+        }
+        if (cudaMalloc(pointer, required) != cudaSuccess) return false;
+        capacity = required;
+        return true;
+    }
+
+    bool ensure(std::size_t matrix_bytes, std::size_t gram_bytes,
+                std::size_t cosine_bytes) {
+        if (!reserve(reinterpret_cast<void**>(&matrix), matrix_capacity,
+                     matrix_bytes)) return false;
+        if (!reserve(reinterpret_cast<void**>(&gram), gram_capacity,
+                     gram_bytes)) return false;
+        if (!reserve(reinterpret_cast<void**>(&cosine), cosine_capacity,
+                     cosine_bytes)) return false;
+        if (!statistics &&
+            cudaMalloc(reinterpret_cast<void**>(&statistics),
+                       2 * sizeof(double)) != cudaSuccess) {
+            return false;
+        }
+        return true;
+    }
+};
+
+DeviceBuffers g_buffers;
+
+__device__ double atomic_max_double(double* address, double value) {
+    auto* integer_address = reinterpret_cast<unsigned long long*>(address);
+    unsigned long long old = *integer_address;
+    while (true) {
+        const unsigned long long assumed = old;
+        if (__longlong_as_double(assumed) >= value) break;
+        old = atomicCAS(integer_address, assumed, __double_as_longlong(value));
+        if (old == assumed) break;
+    }
+    return __longlong_as_double(old);
+}
+
+__global__ void gram_kernel(const double* matrix, int rows, int cols,
+                            double* gram) {
+    const int i = blockIdx.y * blockDim.y + threadIdx.y;
+    const int j = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= rows || j >= rows || j > i) return;
+
+    const double* row_i = matrix + static_cast<std::size_t>(i) * cols;
+    const double* row_j = matrix + static_cast<std::size_t>(j) * cols;
+    double product = 0.0;
+    for (int k = 0; k < cols; ++k) product += row_i[k] * row_j[k];
+
+    gram[static_cast<std::size_t>(i) * rows + j] = product;
+    gram[static_cast<std::size_t>(j) * rows + i] = product;
+}
+
+__global__ void cosine_statistics_kernel(const double* gram, int rows,
+                                          float* cosine,
+                                          double* statistics) {
+    const int i = blockIdx.y * blockDim.y + threadIdx.y;
+    const int j = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= rows || j >= rows || j >= i) return;
+
+    const double diagonal_i = gram[static_cast<std::size_t>(i) * rows + i];
+    const double diagonal_j = gram[static_cast<std::size_t>(j) * rows + j];
+    const double denominator = sqrt(diagonal_i * diagonal_j) + 1e-20;
+    const double value = fabs(
+        gram[static_cast<std::size_t>(i) * rows + j] / denominator);
+
+    cosine[static_cast<std::size_t>(i) * rows + j] =
+        static_cast<float>(value);
+    atomicAdd(&statistics[1], value);
+    atomic_max_double(&statistics[0], value);
+}
+
+bool check(cudaError_t status) {
+    return status == cudaSuccess;
+}
+
+}  // namespace
 
 bool cuda_is_available() {
-    std::lock_guard<std::mutex> lk(g_cuda_mu);
-    int cnt = 0;
-    cudaError_t e = cudaGetDeviceCount(&cnt);
-    return (e == cudaSuccess && cnt > 0);
-}
-
-// ---------- device helpers ----------
-__device__ double atomicMaxDouble(double* addr, double val) {
-    unsigned long long* a = (unsigned long long*)addr;
-    unsigned long long old = *a, assumed;
-    do {
-        assumed = old;
-        double cur = __longlong_as_double(assumed);
-        if (cur >= val) break;
-        old = atomicCAS(a, assumed, __double_as_longlong(val));
-    } while (assumed != old);
-    return __longlong_as_double(*a);
-}
-
-// ---------- Gram + cosine ----------
-__global__ void gram_kernel(const double* M, int n, int cols, double* G) {
-    int i = blockIdx.y * blockDim.y + threadIdx.y;
-    int j = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n || j >= n || j > i) return;
-    const double* ri = M + (size_t)i * cols;
-    const double* rj = M + (size_t)j * cols;
-    double s = 0.0;
-    for (int k = 0; k < cols; ++k) s += ri[k] * rj[k];
-    G[(size_t)i * n + j] = s;
-    G[(size_t)j * n + i] = s;
-}
-
-__global__ void cosine_stats_kernel(const double* G, int n,
-                                    float* cosL, double* stats) {
-    int i = blockIdx.y * blockDim.y + threadIdx.y;
-    int j = blockIdx.x * blockDim.x + threadIdx.x;
-    if (i >= n || j >= n || j >= i) return;
-    double gii = G[(size_t)i * n + i];
-    double gjj = G[(size_t)j * n + j];
-    double denom = sqrt(gii * gjj) + 1e-20;
-    double c = fabs(G[(size_t)i * n + j] / denom);
-    cosL[(size_t)i * n + j] = (float)c;
-    atomicAdd(&stats[1], c);
-    atomicMaxDouble(&stats[0], c);
-}
-
-bool cuda_gram_cosine(const double* M, int n, int cols,
-                      double* G_out, float* cosL_out, double* stats_out) {
-    std::lock_guard<std::mutex> lk(g_cuda_mu);
-    int cnt = 0;
-    if (cudaGetDeviceCount(&cnt) != cudaSuccess || cnt == 0) return false;
-    if (n <= 0 || cols <= 0) return false;
-
-    double *dM = nullptr, *dG = nullptr, *dStats = nullptr;
-    float* dCos = nullptr;
-    size_t szM = (size_t)n * cols * sizeof(double);
-    size_t szG = (size_t)n * n * sizeof(double);
-    size_t szC = (size_t)n * n * sizeof(float);
-    if (cudaMalloc(&dM, szM) != cudaSuccess) return false;
-    if (cudaMalloc(&dG, szG) != cudaSuccess) { cudaFree(dM); return false; }
-    if (cudaMalloc(&dCos, szC) != cudaSuccess) { cudaFree(dM); cudaFree(dG); return false; }
-    if (cudaMalloc(&dStats, 2 * sizeof(double)) != cudaSuccess) {
-        cudaFree(dM); cudaFree(dG); cudaFree(dCos); return false;
+    std::lock_guard<std::mutex> lock(g_cuda_mutex);
+    if (!g_availability_checked) {
+        int count = 0;
+        g_cuda_available =
+            cudaGetDeviceCount(&count) == cudaSuccess && count > 0;
+        g_availability_checked = true;
     }
-    cudaMemcpy(dM, M, szM, cudaMemcpyHostToDevice);
-    cudaMemset(dCos, 0, szC);
-    cudaMemset(dStats, 0, 2 * sizeof(double));
+    return g_cuda_available;
+}
 
-    dim3 blk(16, 16), grd((n + 15) / 16, (n + 15) / 16);
-    gram_kernel<<<grd, blk>>>(dM, n, cols, dG);
-    cosine_stats_kernel<<<grd, blk>>>(dG, n, dCos, dStats);
-    cudaDeviceSynchronize();
+bool cuda_gram_cosine(const double* matrix, int rows, int cols,
+                      double* gram_out, float* cosine_out,
+                      double* statistics_out) {
+    if (!matrix || rows <= 0 || cols <= 0) return false;
 
-    if (G_out)    cudaMemcpy(G_out,    dG,    szG, cudaMemcpyDeviceToHost);
-    if (cosL_out) cudaMemcpy(cosL_out, dCos,  szC, cudaMemcpyDeviceToHost);
-    if (stats_out)cudaMemcpy(stats_out,dStats,2*sizeof(double), cudaMemcpyDeviceToHost);
+    std::lock_guard<std::mutex> lock(g_cuda_mutex);
+    if (!g_availability_checked) {
+        int count = 0;
+        g_cuda_available =
+            cudaGetDeviceCount(&count) == cudaSuccess && count > 0;
+        g_availability_checked = true;
+    }
+    if (!g_cuda_available) return false;
 
-    cudaFree(dM); cudaFree(dG); cudaFree(dCos); cudaFree(dStats);
+    const std::size_t matrix_bytes =
+        static_cast<std::size_t>(rows) * cols * sizeof(double);
+    const std::size_t gram_bytes =
+        static_cast<std::size_t>(rows) * rows * sizeof(double);
+    const std::size_t cosine_bytes =
+        static_cast<std::size_t>(rows) * rows * sizeof(float);
+
+    if (!g_buffers.ensure(matrix_bytes, gram_bytes, cosine_bytes)) return false;
+    if (!check(cudaMemcpy(g_buffers.matrix, matrix, matrix_bytes,
+                          cudaMemcpyHostToDevice))) return false;
+    if (!check(cudaMemset(g_buffers.cosine, 0, cosine_bytes))) return false;
+    if (!check(cudaMemset(g_buffers.statistics, 0, 2 * sizeof(double)))) return false;
+
+    const dim3 block(16, 16);
+    const dim3 grid((rows + block.x - 1) / block.x,
+                    (rows + block.y - 1) / block.y);
+    gram_kernel<<<grid, block>>>(g_buffers.matrix, rows, cols, g_buffers.gram);
+    if (!check(cudaGetLastError())) return false;
+    cosine_statistics_kernel<<<grid, block>>>(
+        g_buffers.gram, rows, g_buffers.cosine, g_buffers.statistics);
+    if (!check(cudaGetLastError()) || !check(cudaDeviceSynchronize())) return false;
+
+    if (gram_out &&
+        !check(cudaMemcpy(gram_out, g_buffers.gram, gram_bytes,
+                          cudaMemcpyDeviceToHost))) return false;
+    if (cosine_out &&
+        !check(cudaMemcpy(cosine_out, g_buffers.cosine, cosine_bytes,
+                          cudaMemcpyDeviceToHost))) return false;
+    if (statistics_out &&
+        !check(cudaMemcpy(statistics_out, g_buffers.statistics,
+                          2 * sizeof(double), cudaMemcpyDeviceToHost))) return false;
     return true;
 }
-

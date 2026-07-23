@@ -1,4 +1,11 @@
-Static integration package generated.
-CMake configure was attempted in the generation environment but could not continue because nvcc was not installed/found there.
-Therefore the package has not been compile-verified in this environment.
-On the target machine, ensure CUDA Toolkit/nvcc, fplll, NTL, GMP, NUMA, pybind11 and OpenMP development files are installed, then run ./build.sh.
+Optimized backend package generated from Backend.zip and compared against the uploaded BGJ reference source.
+
+Validation completed in the generation environment:
+- exact MPZ/unimodular recovery tests passed for valid rectangular transforms;
+- determinant-2 transform rejection passed;
+- double-double recovery test passed above 2^80;
+- modified backend core sources passed C++ syntax compilation against API stubs;
+- native and AVX-512 vector sources compiled with the corresponding ISA flags;
+- Python persistent-worker and smoke-test modules passed py_compile.
+
+A complete target build was not possible here because nvcc, fplll, NTL, and pybind11 development files were unavailable. Run ./build.sh on the target machine. NUMA is now optional; set LATTICE_ENABLE_NUMA=OFF when libnuma is unavailable.

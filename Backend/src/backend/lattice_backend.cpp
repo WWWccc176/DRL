@@ -1,12 +1,18 @@
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+
 #include <fplll.h>
+
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <exception>
 #include <mutex>
+#include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -17,220 +23,384 @@
 #include "sieve_bridge.hpp"
 #include "../cuda/lattice_cuda.h"
 
-namespace py=pybind11;
+namespace py = pybind11;
 using lattice_backend::Matrix;
 
-static std::unordered_map<int64_t,Matrix> g_pool;
-static int64_t g_next_id=1;
-static std::mutex g_pool_mutex;
+namespace {
 
-static constexpr int kAdaptiveSieveThreshold=40;
-static constexpr int kCudaFeatureMinDim=256;
+std::unordered_map<int64_t, Matrix> g_matrix_pool;
+int64_t g_next_matrix_id = 1;
+std::atomic<int64_t> g_next_serial_task_id{-1};
+std::mutex g_matrix_pool_mutex;
 
-static int64_t create_matrix(const std::string& s) {
-    std::lock_guard<std::mutex> lk(g_pool_mutex);
-    const int64_t id=g_next_id++;
-    g_pool[id]=lattice_backend::parse_matrix(s);
+constexpr int kAdaptiveSieveThreshold = lattice_backend::kSieveThreshold;
+constexpr int kCudaFeatureMinDimension = 256;
+
+py::dict reduce_result_to_dict(const lattice_backend::ReduceResult& result) {
+    py::dict out;
+    out["backend"] = result.backend;
+    out["completed"] = result.completed;
+    out["changed"] = result.changed;
+    out["exact"] = result.exact;
+    out["non_worsening"] = result.non_worsening;
+    out["accepted"] = result.accepted;
+    out["early_stopped"] = result.early_stopped;
+    out["quality_target_reached"] = result.quality_target_reached;
+    out["stop_reason"] = lattice_backend::to_string(result.stop_reason);
+    out["error"] = result.error;
+    out["actual_beta"] = result.actual_beta;
+    out["enumeration_rounds"] = result.enumeration_rounds;
+    out["potential_drop_per_dimension"] = result.potential_drop_per_dimension;
+    out["first_gso_log_drop"] = result.first_gso_log_drop;
+    out["sieve_dimension"] = result.sieve_dimension;
+    out["dimension_for_free"] = result.dimension_for_free;
+    out["bgj_calls"] = result.bgj_calls;
+    out["database_vectors"] = result.database_vectors;
+    out["time_ms"] = result.time_ms;
+    return out;
+}
+
+int64_t create_matrix(const std::string& text) {
+    Matrix matrix = lattice_backend::parse_matrix(text);
+    std::lock_guard<std::mutex> lock(g_matrix_pool_mutex);
+    const int64_t id = g_next_matrix_id++;
+    g_matrix_pool.emplace(id, std::move(matrix));
     return id;
 }
 
-static int64_t create_matrix_lll(const std::string& s) {
-    std::lock_guard<std::mutex> lk(g_pool_mutex);
-    const int64_t id=g_next_id++;
-    g_pool[id]=lattice_backend::parse_matrix(s);
-    fplll::lll_reduction(g_pool[id],0.999);
+int64_t create_matrix_lll(const std::string& text) {
+    Matrix matrix = lattice_backend::parse_matrix(text);
+    {
+        py::gil_scoped_release release;
+        fplll::lll_reduction(matrix, 0.999);
+    }
+    std::lock_guard<std::mutex> lock(g_matrix_pool_mutex);
+    const int64_t id = g_next_matrix_id++;
+    g_matrix_pool.emplace(id, std::move(matrix));
     return id;
 }
 
-static std::string dump_matrix(int64_t id) {
-    std::lock_guard<std::mutex> lk(g_pool_mutex);
-    auto it=g_pool.find(id);
-    return it==g_pool.end()?"":lattice_backend::dump_matrix(it->second);
+std::string dump_matrix_api(int64_t id) {
+    std::lock_guard<std::mutex> lock(g_matrix_pool_mutex);
+    const auto iterator = g_matrix_pool.find(id);
+    if (iterator == g_matrix_pool.end()) throw std::runtime_error("invalid matrix id");
+    return lattice_backend::dump_matrix(iterator->second);
 }
 
-static void free_matrix(int64_t id) {
-    std::lock_guard<std::mutex> lk(g_pool_mutex);
-    g_pool.erase(id);
+void free_matrix(int64_t id) {
+    std::lock_guard<std::mutex> lock(g_matrix_pool_mutex);
+    g_matrix_pool.erase(id);
 }
 
-static int64_t clone_matrix(int64_t id) {
-    std::lock_guard<std::mutex> lk(g_pool_mutex);
-    auto it=g_pool.find(id);
-    if (it==g_pool.end()) return -1;
-    const int64_t nid=g_next_id++;
-    g_pool[nid]=it->second;
-    return nid;
+int64_t clone_matrix(int64_t id) {
+    std::lock_guard<std::mutex> lock(g_matrix_pool_mutex);
+    const auto iterator = g_matrix_pool.find(id);
+    if (iterator == g_matrix_pool.end()) return -1;
+    const int64_t new_id = g_next_matrix_id++;
+    g_matrix_pool.emplace(new_id, iterator->second);
+    return new_id;
 }
 
-static py::dict evaluate_matrix(int64_t id) {
-    std::lock_guard<std::mutex> lk(g_pool_mutex);
-    auto it=g_pool.find(id);
-    if (it==g_pool.end()) throw std::runtime_error("invalid matrix id");
+py::dict evaluate_matrix(int64_t id) {
+    std::vector<double> matrix;
+    std::vector<double> scales;
+    std::vector<double> gso;
+    std::vector<double> gram;
+    std::vector<float> cosine;
+    double statistics[2] = {0.0, 0.0};
+    int dimension = 0;
+    int cols = 0;
+    bool gpu = false;
 
-    std::vector<double> M,scales,gs;
-    int n=0,cols=0;
-    lattice_backend::extract_scaled_matrix(it->second,M,scales,n,cols);
-    lattice_backend::gso_log_norms(it->second,gs);
+    {
+        py::gil_scoped_release release;
+        std::lock_guard<std::mutex> lock(g_matrix_pool_mutex);
+        const auto iterator = g_matrix_pool.find(id);
+        if (iterator == g_matrix_pool.end()) throw std::runtime_error("invalid matrix id");
 
-    std::vector<double> G((size_t)n*n,0.0);
-    std::vector<float> C((size_t)n*n,0.0f);
-    double stats[2]={0.0,0.0};
-    bool gpu=false;
+        lattice_backend::extract_scaled_matrix(
+            iterator->second, matrix, scales, dimension, cols);
+        lattice_backend::gso_log_norms(iterator->second, gso);
+
+        gram.assign(static_cast<std::size_t>(dimension) * dimension, 0.0);
+        cosine.assign(static_cast<std::size_t>(dimension) * dimension, 0.0f);
 #ifdef USE_CUDA
-    // Current A11 states are only 50-95 dimensional. Launching CUDA for these tiny
-    // Gram/cosine matrices creates a large context in every env and is slower than
-    // the CPU path. Reserve CUDA state extraction for genuinely large matrices.
-    if (n>=kCudaFeatureMinDim)
-        gpu=cuda_gram_cosine(M.data(),n,cols,G.data(),C.data(),stats);
-#endif
-    if (!gpu) {
-        for (int i=0;i<n;++i) for (int j=0;j<=i;++j) {
-            double s=0.0;
-            for (int k=0;k<cols;++k)
-                s+=M[(size_t)i*cols+k]*M[(size_t)j*cols+k];
-            G[(size_t)i*n+j]=G[(size_t)j*n+i]=s;
+        // Small A11 states are faster on CPU and should not instantiate a CUDA
+        // context in every environment process.
+        if (dimension >= kCudaFeatureMinDimension) {
+            gpu = cuda_gram_cosine(matrix.data(), dimension, cols,
+                                   gram.data(), cosine.data(), statistics);
         }
-        for (int i=0;i<n;++i) for (int j=0;j<i;++j) {
-            const double den=std::sqrt(G[(size_t)i*n+i]*G[(size_t)j*n+j])+1e-20;
-            const double c=std::fabs(G[(size_t)i*n+j]/den);
-            C[(size_t)i*n+j]=(float)c;
-            stats[0]=std::max(stats[0],c);
-            stats[1]+=c;
+#endif
+        if (!gpu) {
+            for (int i = 0; i < dimension; ++i) {
+                for (int j = 0; j <= i; ++j) {
+                    double product = 0.0;
+                    for (int k = 0; k < cols; ++k) {
+                        product += matrix[static_cast<std::size_t>(i) * cols + k] *
+                                   matrix[static_cast<std::size_t>(j) * cols + k];
+                    }
+                    gram[static_cast<std::size_t>(i) * dimension + j] = product;
+                    gram[static_cast<std::size_t>(j) * dimension + i] = product;
+                }
+            }
+            for (int i = 0; i < dimension; ++i) {
+                for (int j = 0; j < i; ++j) {
+                    const double denominator = std::sqrt(
+                        gram[static_cast<std::size_t>(i) * dimension + i] *
+                        gram[static_cast<std::size_t>(j) * dimension + j]) + 1e-20;
+                    const double value = std::fabs(
+                        gram[static_cast<std::size_t>(i) * dimension + j] /
+                        denominator);
+                    cosine[static_cast<std::size_t>(i) * dimension + j] =
+                        static_cast<float>(value);
+                    statistics[0] = std::max(statistics[0], value);
+                    statistics[1] += value;
+                }
+            }
         }
     }
 
-    py::array_t<double> gs_arr({n});
-    std::copy(gs.begin(),gs.end(),gs_arr.mutable_data());
-    py::array_t<float> cos_arr({n,n});
-    std::copy(C.begin(),C.end(),cos_arr.mutable_data());
+    py::array_t<double> gso_array({dimension});
+    std::copy(gso.begin(), gso.end(), gso_array.mutable_data());
+    py::array_t<float> cosine_array({dimension, dimension});
+    std::copy(cosine.begin(), cosine.end(), cosine_array.mutable_data());
 
-    py::dict d;
-    d["gs_log_norms"]=gs_arr;
-    d["cos_matrix"]=cos_arr;
-    d["max_cos"]=stats[0];
-    d["mean_cos"]=(n>1?stats[1]/((double)n*(n-1)/2.0):0.0);
-    return d;
+    py::dict out;
+    out["gs_log_norms"] = gso_array;
+    out["cos_matrix"] = cosine_array;
+    out["max_cos"] = statistics[0];
+    out["mean_cos"] = dimension > 1
+                           ? statistics[1] /
+                                 (static_cast<double>(dimension) * (dimension - 1) / 2.0)
+                           : 0.0;
+    out["feature_device"] = gpu ? "cuda" : "cpu";
+    return out;
 }
 
-static int adaptive_sieve_threshold_api() {
+int minimum_action_beta_api() {
+    return lattice_backend::kMinimumActionBeta;
+}
+
+int adaptive_sieve_threshold_api() {
     return kAdaptiveSieveThreshold;
 }
 
-static bool action_uses_gpu_api(int64_t matrix_id,int pos,int beta) {
-    std::lock_guard<std::mutex> lk(g_pool_mutex);
-    auto it=g_pool.find(matrix_id);
-    if (it==g_pool.end()) throw std::runtime_error("invalid matrix id");
+bool action_uses_gpu_api(int64_t matrix_id, int pos, int beta) {
+    std::lock_guard<std::mutex> lock(g_matrix_pool_mutex);
+    const auto iterator = g_matrix_pool.find(matrix_id);
+    if (iterator == g_matrix_pool.end()) throw std::runtime_error("invalid matrix id");
 
-    const int rows=it->second.get_rows();
-    if (pos<0 || pos>=rows || beta<2)
+    const int rows = iterator->second.get_rows();
+    if (pos < 0 || pos >= rows ||
+        beta < lattice_backend::kMinimumActionBeta ||
+        beta > lattice_backend::kMaximumActionBeta) {
         throw std::runtime_error("invalid adaptive block");
-
-    const int actual_beta=std::min(beta,rows-pos);
-    return actual_beta>=kAdaptiveSieveThreshold;
+    }
+    const int actual_beta = std::min(beta, rows - pos);
+    if (actual_beta < lattice_backend::kMinimumActionBeta) {
+        throw std::runtime_error("clipped adaptive block is smaller than beta=21");
+    }
+    return actual_beta >= kAdaptiveSieveThreshold;
 }
 
-static py::dict reduce_extreme_api(int64_t matrix_id,int pos,int beta,bool bool_sieve) {
-    std::lock_guard<std::mutex> lk(g_pool_mutex);
-    auto it=g_pool.find(matrix_id);
-    if (it==g_pool.end()) throw std::runtime_error("invalid matrix id");
-
-    auto r=lattice_backend::reduce_extreme(matrix_id,it->second,pos,beta,bool_sieve);
-    py::dict d;
-    d["backend"]=r.backend;
-    d["accepted"]=r.accepted;
-    d["actual_beta"]=r.actual_beta;
-    d["sieve_dimension"]=r.sieve_dimension;
-    d["database_vectors"]=r.database_vectors;
-    d["time_ms"]=r.time_ms;
-    return d;
+py::dict reduce_extreme_api(int64_t matrix_id, int pos, int beta,
+                            bool use_sieve) {
+    lattice_backend::ReduceResult result;
+    {
+        py::gil_scoped_release release;
+        std::lock_guard<std::mutex> lock(g_matrix_pool_mutex);
+        const auto iterator = g_matrix_pool.find(matrix_id);
+        if (iterator == g_matrix_pool.end()) throw std::runtime_error("invalid matrix id");
+        result = lattice_backend::reduce_extreme(
+            matrix_id, iterator->second, pos, beta, use_sieve);
+    }
+    return reduce_result_to_dict(result);
 }
 
-// Exact A11 initialization route: LLL has already been run by create_matrix_lll().
-// This performs one GLOBAL BKZ 2.0 tour with the requested block size.
-static py::dict reduce_bkz2_global_api(int64_t matrix_id,int beta,int loops) {
-    const auto t0=std::chrono::steady_clock::now();
-    std::lock_guard<std::mutex> lk(g_pool_mutex);
-    auto it=g_pool.find(matrix_id);
-    if (it==g_pool.end()) throw std::runtime_error("invalid matrix id");
+py::dict reduce_bkz2_global_api(int64_t matrix_id, int beta, int loops) {
+    lattice_backend::ReduceResult result;
+    result.backend = "bkz2_global";
+    const auto started = std::chrono::steady_clock::now();
 
-    const int actual_beta=std::max(2,std::min(beta,it->second.get_rows()));
-    lattice_backend::run_bkz2(it->second,actual_beta,std::max(1,loops),1.0);
+    {
+        py::gil_scoped_release release;
+        std::lock_guard<std::mutex> lock(g_matrix_pool_mutex);
+        const auto iterator = g_matrix_pool.find(matrix_id);
+        if (iterator == g_matrix_pool.end()) throw std::runtime_error("invalid matrix id");
 
-    py::dict d;
-    d["backend"]="bkz2_global";
-    d["accepted"]=true;
-    d["actual_beta"]=actual_beta;
-    d["time_ms"]=std::chrono::duration<double,std::milli>(
-        std::chrono::steady_clock::now()-t0).count();
-    return d;
+        Matrix before = iterator->second;
+        result.actual_beta = std::max(2, std::min(beta, iterator->second.get_rows()));
+        result.completed = lattice_backend::run_bkz2(
+            iterator->second, result.actual_beta, std::max(1, loops), 1.0,
+            &result.error);
+        result.exact = true;
+        result.changed = result.completed &&
+                         !lattice_backend::matrices_equal(before, iterator->second);
+        result.non_worsening = result.completed &&
+            lattice_backend::log_potential(iterator->second) <=
+                lattice_backend::log_potential(before) + 1e-10;
+        result.accepted = result.changed && result.non_worsening;
+        if (!result.non_worsening) iterator->second = std::move(before);
+        result.stop_reason = !result.completed
+                                 ? lattice_backend::StopReason::precondition_failed
+                                 : result.accepted
+                                       ? lattice_backend::StopReason::completed
+                                       : result.changed && !result.non_worsening
+                                             ? lattice_backend::StopReason::non_worsening_rejected
+                                             : lattice_backend::StopReason::no_change;
+    }
+
+    result.time_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count();
+    return reduce_result_to_dict(result);
 }
 
-// Exact A11 cycle tail: sieve the requested local block, write it back only if its
-// potential does not worsen, then run full-basis LLL and return.
-static py::dict reduce_sieve_block_api(int64_t matrix_id,int pos,int beta) {
-    const auto t0=std::chrono::steady_clock::now();
-    std::lock_guard<std::mutex> lk(g_pool_mutex);
-    auto it=g_pool.find(matrix_id);
-    if (it==g_pool.end()) throw std::runtime_error("invalid matrix id");
+py::dict reduce_sieve_block_api(int64_t matrix_id, int pos, int beta) {
+    lattice_backend::ReduceResult result;
+    result.backend = "local_bgj_sieve_final";
+    const auto started = std::chrono::steady_clock::now();
 
-    Matrix& B=it->second;
-    if (pos<0 || pos>=B.get_rows() || beta<2)
-        throw std::runtime_error("invalid sieve block");
+    {
+        py::gil_scoped_release release;
+        std::lock_guard<std::mutex> lock(g_matrix_pool_mutex);
+        const auto iterator = g_matrix_pool.find(matrix_id);
+        if (iterator == g_matrix_pool.end()) throw std::runtime_error("invalid matrix id");
 
-    const int actual_beta=std::min(beta,B.get_rows()-pos);
-    Matrix block=lattice_backend::copy_block(B,pos,actual_beta);
-    const double pot_before=lattice_backend::log_potential(block);
+        Matrix& basis = iterator->second;
+        if (pos < 0 || pos >= basis.get_rows() || beta < 2) {
+            throw std::runtime_error("invalid sieve block");
+        }
 
-    auto s=lattice_backend::run_local_extreme_sieve(block,matrix_id,pos);
-    fplll::lll_reduction(block,0.999);
+        Matrix full_before = basis;
+        const double full_potential_before = lattice_backend::log_potential(full_before);
+        result.actual_beta = std::min(beta, basis.get_rows() - pos);
+        Matrix local_before = lattice_backend::copy_block(basis, pos, result.actual_beta);
+        Matrix candidate = local_before;
+        const double local_potential_before = lattice_backend::log_potential(local_before);
 
-    const double pot_after=lattice_backend::log_potential(block);
-    const bool accepted=std::isfinite(pot_after) && pot_after<=pot_before+1e-10;
-    if (accepted)
-        lattice_backend::write_block(B,pos,block);
+        const lattice_backend::SieveRunInfo sieve =
+            lattice_backend::run_local_extreme_sieve(candidate, matrix_id, pos);
+        result.completed = sieve.completed;
+        result.exact = sieve.exact;
+        result.stop_reason = sieve.stop_reason;
+        result.error = sieve.error;
+        result.sieve_dimension = sieve.final_csd;
+        result.dimension_for_free = sieve.dimension_for_free;
+        result.bgj_calls = sieve.bgj_calls;
+        result.database_vectors = sieve.vectors;
 
-    // User-requested final whole-basis LLL, regardless of whether the sieve insert
-    // was accepted.
-    fplll::lll_reduction(B,0.999);
+        if (result.completed && result.exact) {
+            fplll::lll_reduction(candidate, 0.999);
+            const double local_potential_after = lattice_backend::log_potential(candidate);
+            const bool local_non_worsening =
+                std::isfinite(local_potential_after) &&
+                local_potential_after <= local_potential_before + 1e-10;
 
-    py::dict d;
-    d["backend"]="local_bgj_sieve_final";
-    d["accepted"]=accepted;
-    d["actual_beta"]=actual_beta;
-    d["sieve_dimension"]=s.final_csd;
-    d["database_vectors"]=s.vectors;
-    d["time_ms"]=std::chrono::duration<double,std::milli>(
-        std::chrono::steady_clock::now()-t0).count();
-    return d;
+            if (local_non_worsening &&
+                !lattice_backend::matrices_equal(local_before, candidate)) {
+                if (!lattice_backend::write_block(basis, pos, candidate, &result.error)) {
+                    basis = std::move(full_before);
+                    result.completed = false;
+                    result.stop_reason = lattice_backend::StopReason::invalid_input;
+                }
+            }
+
+            if (result.completed) {
+                fplll::lll_reduction(basis, 0.999);
+                const double full_potential_after = lattice_backend::log_potential(basis);
+                result.non_worsening =
+                    std::isfinite(full_potential_after) &&
+                    full_potential_after <= full_potential_before + 1e-10;
+                result.changed =
+                    !lattice_backend::matrices_equal(full_before, basis);
+                result.accepted = result.changed && result.non_worsening;
+
+                if (!result.non_worsening) {
+                    basis = std::move(full_before);
+                    result.accepted = false;
+                    result.stop_reason =
+                        lattice_backend::StopReason::non_worsening_rejected;
+                    if (result.error.empty()) {
+                        result.error =
+                            "cycle-tail sieve/LLL result failed the full-basis transaction gate";
+                    }
+                } else {
+                    result.stop_reason = result.changed
+                        ? lattice_backend::StopReason::completed
+                        : lattice_backend::StopReason::no_change;
+                }
+            }
+        }
+    }
+
+    result.time_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - started).count();
+    return reduce_result_to_dict(result);
 }
 
-static py::dict reduce_compat(int64_t matrix_id,const std::string& method,int param,int pos) {
-    const bool sieve=(method=="ORACLE" || method=="SIEVE" || method=="EXTREME");
-    return reduce_extreme_api(matrix_id,pos,param,sieve);
+py::dict reduce_serialized_block_api(const std::string& matrix_text,
+                                     bool use_sieve) {
+    Matrix block = lattice_backend::parse_matrix(matrix_text);
+    const int64_t task_id =
+        g_next_serial_task_id.fetch_sub(1, std::memory_order_relaxed);
+    lattice_backend::ReduceResult result;
+    {
+        py::gil_scoped_release release;
+        result = lattice_backend::reduce_extreme(
+            task_id, block, 0, block.get_rows(), use_sieve);
+    }
+    py::dict out = reduce_result_to_dict(result);
+    out["matrix"] = lattice_backend::dump_matrix(block);
+    return out;
 }
 
-PYBIND11_MODULE(my_project_backend,m) {
-    m.doc()="Local extreme lattice backend: BKZ2.0 + exact enumeration + integrated BGJ/DH CUDA sieve";
-    m.def("create_matrix",&create_matrix,py::arg("matrix_str"));
-    m.def("create_matrix_lll",&create_matrix_lll,py::arg("matrix_str"));
-    m.def("reduce_extreme",&reduce_extreme_api,
-          py::arg("matrix_id"),py::arg("pos"),py::arg("beta"),py::arg("bool_sieve"));
-    m.def("reduce_bkz2_global",&reduce_bkz2_global_api,
-          py::arg("matrix_id"),py::arg("beta"),py::arg("loops")=1);
-    m.def("reduce_sieve_block",&reduce_sieve_block_api,
-          py::arg("matrix_id"),py::arg("pos"),py::arg("beta"));
-    m.def("reduce",&reduce_compat,
-          py::arg("matrix_id"),py::arg("method"),py::arg("param"),py::arg("pos"));
-    m.def("evaluate_matrix",&evaluate_matrix,py::arg("matrix_id"));
-    m.def("dump_matrix",&dump_matrix,py::arg("matrix_id"));
-    m.def("free_matrix",&free_matrix,py::arg("matrix_id"));
-    m.def("clone_matrix",&clone_matrix,py::arg("matrix_id"));
-    m.def("adaptive_sieve_threshold",&adaptive_sieve_threshold_api);
-    m.def("action_uses_gpu",&action_uses_gpu_api,
-          py::arg("matrix_id"),py::arg("pos"),py::arg("beta"));
+py::dict reduce_compat(int64_t matrix_id, const std::string& method,
+                       int parameter, int position) {
+    const bool use_sieve = method == "ORACLE" || method == "SIEVE" ||
+                           method == "EXTREME";
+    return reduce_extreme_api(matrix_id, position, parameter, use_sieve);
+}
+
+void shutdown_backend_api() {
+    py::gil_scoped_release release;
+    lattice_backend::shutdown_local_sieve_engine();
+}
+
+}  // namespace
+
+PYBIND11_MODULE(my_project_backend, module) {
+    module.doc() =
+        "Exact MPZ lattice backend with budgeted BKZ/enumeration and an integrated BGJ/DH sieve";
+
+    module.def("create_matrix", &create_matrix, py::arg("matrix_str"));
+    module.def("create_matrix_lll", &create_matrix_lll, py::arg("matrix_str"));
+    module.def("reduce_extreme", &reduce_extreme_api,
+               py::arg("matrix_id"), py::arg("pos"), py::arg("beta"),
+               py::arg("bool_sieve"));
+    module.def("reduce_bkz2_global", &reduce_bkz2_global_api,
+               py::arg("matrix_id"), py::arg("beta"), py::arg("loops") = 1);
+    module.def("reduce_sieve_block", &reduce_sieve_block_api,
+               py::arg("matrix_id"), py::arg("pos"), py::arg("beta"));
+    module.def("reduce_serialized_block", &reduce_serialized_block_api,
+               py::arg("matrix_str"), py::arg("bool_sieve") = true,
+               "Worker-safe exact block IPC: returns a serialized MPZ block and explicit result semantics.");
+    module.def("reduce", &reduce_compat,
+               py::arg("matrix_id"), py::arg("method"), py::arg("param"),
+               py::arg("pos"));
+    module.def("evaluate_matrix", &evaluate_matrix, py::arg("matrix_id"));
+    module.def("dump_matrix", &dump_matrix_api, py::arg("matrix_id"));
+    module.def("free_matrix", &free_matrix, py::arg("matrix_id"));
+    module.def("clone_matrix", &clone_matrix, py::arg("matrix_id"));
+    module.def("minimum_action_beta", &minimum_action_beta_api);
+    module.def("adaptive_sieve_threshold", &adaptive_sieve_threshold_api);
+    module.def("action_uses_gpu", &action_uses_gpu_api,
+               py::arg("matrix_id"), py::arg("pos"), py::arg("beta"));
+    module.def("shutdown_backend", &shutdown_backend_api,
+               "Release the global pinned sieve allocator when a persistent worker exits.");
 #ifdef USE_CUDA
-    m.def("cuda_available",[](){return cuda_is_available();});
+    module.def("cuda_available", []() { return cuda_is_available(); });
 #else
-    m.def("cuda_available",[](){return false;});
+    module.def("cuda_available", []() { return false; });
 #endif
 }

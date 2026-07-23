@@ -4,23 +4,31 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 PYTHON_BIN="${PYTHON_BIN:-$(command -v python)}"
-PYBIND11_DIR="$("$PYTHON_BIN" -m pybind11 --cmakedir)"
+PYBIND11_DIR="$($PYTHON_BIN -m pybind11 --cmakedir)"
+BUILD_DIR="${BUILD_DIR:-build}"
+BUILD_JOBS="${BUILD_JOBS:-$(nproc)}"
 
 echo "Python:   $PYTHON_BIN"
 echo "pybind11: $PYBIND11_DIR"
+echo "Build:    $BUILD_DIR"
 
 CMAKE_ARGS=(
-    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}"
     -DPython3_EXECUTABLE="$PYTHON_BIN"
     -Dpybind11_DIR="$PYBIND11_DIR"
+    -DLATTICE_GPU_NUM="${LATTICE_GPU_NUM:-1}"
+    -DLATTICE_CUDA_ARCH="${LATTICE_CUDA_ARCH:-native}"
+    -DLATTICE_PWC_DRAM_GB="${LATTICE_PWC_DRAM_GB:-3}"
+    -DLATTICE_BWC_DRAM_GB="${LATTICE_BWC_DRAM_GB:-6}"
+    -DLATTICE_SWC_DRAM_GB="${LATTICE_SWC_DRAM_GB:-2}"
+    -DLATTICE_UT_TABLE_DRAM_GB="${LATTICE_UT_TABLE_DRAM_GB:-6}"
+    -DLATTICE_UT_BUFFER_DRAM_GB="${LATTICE_UT_BUFFER_DRAM_GB:-3}"
+    -DLATTICE_ENABLE_NUMA="${LATTICE_ENABLE_NUMA:-ON}"
 )
 
 if [[ -n "${CONDA_PREFIX:-}" ]]; then
-    CMAKE_ARGS+=(
-        -DCMAKE_PREFIX_PATH="$CONDA_PREFIX"
-    )
+    CMAKE_ARGS+=( -DCMAKE_PREFIX_PATH="$CONDA_PREFIX" )
 fi
 
-cmake -S . -B build "${CMAKE_ARGS[@]}"
-
-cmake --build build -j"$(nproc)"
+cmake -S . -B "$BUILD_DIR" "${CMAKE_ARGS[@]}"
+cmake --build "$BUILD_DIR" -j"$BUILD_JOBS"

@@ -1,0 +1,4 @@
+Static integration package generated.
+CMake configure was attempted in the generation environment but could not continue because nvcc was not installed/found there.
+Therefore the package has not been compile-verified in this environment.
+On the target machine, ensure CUDA Toolkit/nvcc, fplll, NTL, GMP, NUMA, pybind11 and OpenMP development files are installed, then run ./build.sh.
