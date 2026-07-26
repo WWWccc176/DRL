@@ -134,7 +134,18 @@ long target_database_size(int csd, const SieveBudget &budget) {
     long double expected =
         3.2L * std::pow(4.0L / 3.0L, static_cast<long double>(csd) * 0.5L) -
         5.0L;
-    expected = std::min(expected, static_cast<long double>(budget.max_vectors));
+    // A11_STRICT_VECTOR_DATABASE_BEGIN
+    const long double vector_multiplier =
+        static_cast<long double>(environment_double(
+            "LATTICE_SIEVE_VECTOR_MULTIPLIER",
+            1.25,
+            1.0,
+            2.0));
+    expected *= vector_multiplier;
+    expected = std::min(
+        expected,
+        static_cast<long double>(budget.max_vectors));
+    // A11_STRICT_VECTOR_DATABASE_END
     expected = std::max(expected, static_cast<long double>(csd + 64));
     expected = std::min(
         expected, static_cast<long double>(std::numeric_limits<long>::max()));
@@ -263,18 +274,97 @@ SieveRunInfo run_local_extreme_sieve(Matrix &block, int64_t matrix_id,
                 pool.extend_left();
             }
 
+            // A11_BOUNDED_DH_INSERT_BEGIN
             pool.down_sieve_flag = 1;
+
+            const double configured_cap_seconds =
+                budget.max_wall_seconds > 0.0
+                    ? budget.max_wall_seconds
+                    : 210.0;
+
+            const double hard_cap_seconds = std::min(
+                210.0,
+                std::max(1.0, configured_cap_seconds));
+
+            const double recovery_reserve_seconds = environment_double(
+                "LATTICE_SIEVE_RECOVERY_RESERVE_SECONDS",
+                8.0,
+                0.0,
+                30.0);
+
+            const auto remaining_seconds = [&]() -> double {
+                const double elapsed_seconds =
+                    std::chrono::duration<double>(
+                        std::chrono::steady_clock::now() - started)
+                        .count();
+
+                return std::max(
+                    0.0,
+                    hard_cap_seconds
+                        - elapsed_seconds
+                        - recovery_reserve_seconds);
+            };
+
+            const char* target_factor_environment =
+                "LATTICE_SIEVE_DH_TARGET_61_79";
+
+            double default_target_factor = 0.99;
+
+            if (dimension >= 95) {
+                target_factor_environment =
+                    "LATTICE_SIEVE_DH_TARGET_95";
+                default_target_factor = 0.95;
+            } else if (dimension >= 80) {
+                target_factor_environment =
+                    "LATTICE_SIEVE_DH_TARGET_80_94";
+                default_target_factor = 0.97;
+            }
+
+            const double target_factor = environment_double(
+                target_factor_environment,
+                default_target_factor,
+                0.85,
+                1.05);
+
+            const double dh_target_length =
+                std::sqrt(std::max(0.0, pool.gh2_scaled()))
+                * target_factor;
+
             long inserted_position = -1;
             int insertion_status = -1;
-            if (budget.enable_dual_hash && pool.CSD >= 60) {
-                insertion_status = pool.dh_insert(0, budget.insertion_eta, 0.0,
-                                                  &inserted_position, 0.0);
+
+            double available_seconds = remaining_seconds();
+
+            if (
+                budget.enable_dual_hash
+                && pool.CSD >= 60
+                && available_seconds > 1.0
+            ) {
+                insertion_status = pool.dh_insert(
+                    0,
+                    budget.insertion_eta,
+                    available_seconds,
+                    &inserted_position,
+                    dh_target_length);
             }
-            if (insertion_status != 0) {
-                insertion_status =
-                    pool.insert(0, budget.insertion_eta, &inserted_position, 1);
+
+            available_seconds = remaining_seconds();
+
+            if (
+                insertion_status != 0
+                && available_seconds > 2.0
+            ) {
+                insertion_status = pool.insert(
+                    0,
+                    budget.insertion_eta,
+                    &inserted_position,
+                    1);
             }
-            info.inserted = insertion_status == 0 && inserted_position >= 0;
+
+            info.inserted =
+                insertion_status == 0
+                && inserted_position >= 0;
+            // A11_BOUNDED_DH_INSERT_END
 
             if (dimension < 90)
                 lattice.LLL_DEEP_QP(0.999);

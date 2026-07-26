@@ -57,23 +57,23 @@ enum class PreconditionerProfile {
 };
 
 struct EnumerationBudget {
-    int max_rounds = 2;
-    double lll_delta = 0.999;
-    double gh_factor = 1.05;
-    double target_potential_drop_per_dimension = 5.0e-4;
-    double target_first_gso_log_drop = 1.0e-3;
-    double min_round_potential_drop_per_dimension = 1.0e-5;
+    int max_rounds = 3;
+    double lll_delta = 0.9995;
+    double gh_factor = 1.03;
+    double target_potential_drop_per_dimension = 8.0e-4;
+    double target_first_gso_log_drop = 1.5e-3;
+    double min_round_potential_drop_per_dimension = 5.0e-6;
 };
 
 struct SieveBudget {
-    std::int64_t max_vectors = 2'000'000;
+    std::int64_t max_vectors = 3'000'000;
     int max_csd = 175;
     int max_bgj_calls = 1;
-    double max_wall_seconds = 0.0;
+    double max_wall_seconds = 210.0;
     bool progressive = false;
     bool enable_dual_hash = true;
     bool cleanup_workdir = true;
-    double insertion_eta = 1.05;
+    double insertion_eta = 1.015;
 };
 
 struct ReduceResult {

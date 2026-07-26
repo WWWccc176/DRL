@@ -355,15 +355,97 @@ class LatticeEnv:
 
     def step(self, action_idx: int):
         pos, beta = self.action_list[action_idx]
+        # A11_ACTION_VISIBILITY_BEGIN
+        route = (
+            "ENUM"
+            if beta <= 52
+            else ("BGJ3" if beta >= 95 else "BGJ2")
+        )
+        action_budget_seconds = (
+            75.0
+            if route == "ENUM"
+            else 210.0
+        )
+        action_seed = getattr(
+            self,
+            "seed_id",
+            getattr(self, "seed", "?"),
+        )
+        action_gpu = (
+            "cpu"
+            if route == "ENUM"
+            else getattr(self, "gpu_id", "?")
+        )
+        print(
+            "[A11 ACTION START] "
+            f"env={self.env_id} "
+            f"dim={self.dim} "
+            f"seed={action_seed} "
+            f"step={self.current_step + 1} "
+            f"route={route} "
+            f"gpu={action_gpu} "
+            f"action_idx={action_idx} "
+            f"pos={pos} "
+            f"beta={beta} "
+            f"budget_s={action_budget_seconds:.0f}",
+            flush=True,
+        )
+        # A11_ACTION_VISIBILITY_END
         old_logb1, old_maxcos, old_logdef = (
             self._c_logb1,
             self._c_maxcos,
             self._c_logdef,
         )
         old_best, old_ep_best = self.best_ratio, self.current_ep_best_ratio
+        old_current_ratio = float(
+            math.exp(old_logb1 - self.log_GH)
+        )
 
-        self.last_info = self._exec_action(pos, beta)
+        try:
+            self.last_info = self._exec_action(pos, beta)
+        except Exception as exc:
+            print(
+                "[A11 ACTION FAIL] "
+                f"env={self.env_id} "
+                f"dim={self.dim} "
+                f"seed={action_seed} "
+                f"step={self.current_step + 1} "
+                f"route={route} "
+                f"gpu={action_gpu} "
+                f"pos={pos} "
+                f"beta={beta} "
+                f"error={type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            raise
+
         self.current_step += 1
+
+        native_time_seconds = (
+            float(self.last_info.get("time_ms", 0.0))
+            / 1000.0
+        )
+
+        print(
+            "[A11 ACTION END] "
+            f"env={self.env_id} "
+            f"dim={self.dim} "
+            f"seed={action_seed} "
+            f"step={self.current_step} "
+            f"route={route} "
+            f"gpu={action_gpu} "
+            f"pos={pos} "
+            f"beta={beta} "
+            f"backend={self.last_info.get('backend', 'unknown')} "
+            f"stop={self.last_info.get('stop_reason', 'unknown')} "
+            f"completed={self.last_info.get('completed', False)} "
+            f"accepted={self.last_info.get('accepted', False)} "
+            f"exact={self.last_info.get('exact', False)} "
+            f"bgj_calls={self.last_info.get('bgj_calls', 0)} "
+            f"vectors={self.last_info.get('database_vectors', 0)} "
+            f"time_s={native_time_seconds:.3f}",
+            flush=True,
+        )
 
         self.episode_action_path.append(
             {
@@ -412,10 +494,34 @@ class LatticeEnv:
         r_orth = old_maxcos - new_maxcos
         r_def = old_logdef - new_logdef
 
-        if self.best_ratio < 1.08:
-            w, alpha, gamma_r, cost_w = 15.0, 8.0, 5.0, 0.08
+        if self.best_ratio < 0.95:
+            w, alpha, gamma_r, cost_w = (
+                80.0,
+                1.0,
+                1.0,
+                0.02,
+            )
+        elif self.best_ratio < 1.00:
+            w, alpha, gamma_r, cost_w = (
+                65.0,
+                1.5,
+                1.5,
+                0.03,
+            )
+        elif self.best_ratio < 1.08:
+            w, alpha, gamma_r, cost_w = (
+                50.0,
+                2.0,
+                2.0,
+                0.05,
+            )
         elif self.best_ratio < 1.15:
-            w, alpha, gamma_r, cost_w = 25.0, 3.0, 2.0, 0.12
+            w, alpha, gamma_r, cost_w = (
+                35.0,
+                2.5,
+                2.0,
+                0.08,
+            )
         else:
             w, alpha, gamma_r, cost_w = (
                 self.ratio_w,
@@ -424,10 +530,27 @@ class LatticeEnv:
                 self.cost_w,
             )
 
-        max_beta = max(b for _, b in self.action_list)
-        reward = (
-            w * r_ratio + alpha * r_orth + gamma_r * r_def - cost_w * (beta / max_beta)
+        max_beta = max(
+            action_beta
+            for _, action_beta in self.action_list
         )
+
+        reward = (
+            w * r_ratio
+            + alpha * r_orth
+            + gamma_r * r_def
+            - cost_w * (beta / max_beta)
+        )
+
+        for threshold, bonus in (
+            (1.00, 1.0),
+            (0.97, 1.5),
+            (0.95, 2.0),
+            (0.90, 3.0),
+            (0.85, 4.0),
+        ):
+            if old_current_ratio >= threshold > new_ratio:
+                reward += bonus
 
         if new_ratio < old_best:
             reward += 5.0

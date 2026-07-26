@@ -1490,7 +1490,7 @@ template <class logger_t> int pwc_manager_tmpl<logger_t>::_set_prefix(const char
     #endif
     #else
     int first_time_set = this->_prefix[0] == '\0';
-    int ret = snprintf(this->_prefix, sizeof(this->_prefix), ".%s/.%s_", dirname, basis_prefix);
+    int ret = snprintf(this->_prefix, sizeof(this->_prefix), ".%s/.%ld_%s_", dirname, static_cast<long>(::getpid()), basis_prefix);
     if (ret >= sizeof(this->_prefix)) {
         this->_prefix[sizeof(this->_prefix) - 1] = '\0';
         lg_warn("prefix truncated");
