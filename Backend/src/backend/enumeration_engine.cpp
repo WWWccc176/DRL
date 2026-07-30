@@ -109,45 +109,27 @@ EnumerationRunInfo run_extreme_enumeration(
         return out;
     }
 
-    // Episode initialization is LLL + one global BKZ-20 tour. Each action only
-    // restabilizes its current local block before entering the pruned SVP round.
     if (!run_local_lll(B, budget.lll_delta, &out.error)) {
         B = std::move(original);
         out.stop_reason = StopReason::precondition_failed;
         return out;
     }
 
-    update_quality_metrics(B, initial_potential, initial_first_gso, out);
-    if (quality_target_reached(out, budget)) {
-        const double lll_potential = log_potential(B);
-        const bool non_worsening = std::isfinite(lll_potential) &&
-                                   lll_potential <= initial_potential + 1e-10;
-        if (!non_worsening) {
-            B = std::move(original);
-            out.stop_reason = StopReason::non_worsening_rejected;
-            out.error =
-                "local LLL failed the exact MPZ potential transaction gate";
-            return out;
-        }
-        out.completed = true;
-        out.changed = !matrices_equal(B, original);
-        out.quality_target_reached = true;
-        out.early_stopped = true;
-        out.stop_reason = out.changed ? StopReason::quality_target_reached
-                                      : StopReason::no_change;
+    double previous_potential = log_potential(B);
+    if (!std::isfinite(previous_potential)) {
+        B = std::move(original);
+        out.stop_reason = StopReason::precondition_failed;
+        out.error = "local LLL produced a non-finite GSO profile";
         return out;
     }
 
-    double previous_potential = log_potential(B);
+    bool enumeration_improved = false;
     StopReason natural_stop = StopReason::completed;
 
     for (int round = 0; round < std::max(1, budget.max_rounds); ++round) {
         Matrix before_round = B;
         std::string round_error;
 
-        // One round means one pruned SVP reduction of the requested local block,
-        // not a complete HKZ tour over every shrinking suffix. The complete exact
-        // transformed local basis is retained (Zhao-Ding local-basis processing).
         if (!run_local_pruned_svp_round(
                 B, budget.lll_delta, budget.gh_factor, &round_error)) {
             B = std::move(original);
@@ -158,12 +140,18 @@ EnumerationRunInfo run_extreme_enumeration(
 
         const double current_potential = log_potential(B);
         const double current_first_gso = first_gso_log_norm(B);
-        if (!std::isfinite(current_potential) || !std::isfinite(current_first_gso)) {
+        if (!std::isfinite(current_potential) ||
+            !std::isfinite(current_first_gso)) {
             B = std::move(original);
             out.stop_reason = StopReason::enumeration_failed;
             out.error = "local pruned enumeration produced non-finite GSO metrics";
             return out;
         }
+
+        const bool round_changed = !matrices_equal(B, before_round);
+        const double round_drop_per_dimension =
+            (previous_potential - current_potential) /
+            static_cast<double>(dimension);
 
         if (current_potential > previous_potential + 1e-10) {
             B = std::move(before_round);
@@ -172,10 +160,18 @@ EnumerationRunInfo run_extreme_enumeration(
             break;
         }
 
+        if (!round_changed ||
+            round_drop_per_dimension <=
+                budget.min_round_potential_drop_per_dimension) {
+            B = std::move(before_round);
+            natural_stop = StopReason::stagnation;
+            out.early_stopped = round + 1 < budget.max_rounds;
+            break;
+        }
+
+        enumeration_improved = true;
         ++out.rounds;
-        const double round_drop_per_dimension =
-            (previous_potential - current_potential) /
-            static_cast<double>(dimension);
+        previous_potential = current_potential;
         update_quality_metrics(B, initial_potential, initial_first_gso, out);
 
         if (quality_target_reached(out, budget)) {
@@ -184,16 +180,16 @@ EnumerationRunInfo run_extreme_enumeration(
             natural_stop = StopReason::quality_target_reached;
             break;
         }
+    }
 
-        if (matrices_equal(B, before_round) ||
-            round_drop_per_dimension <=
-                budget.min_round_potential_drop_per_dimension) {
-            out.early_stopped = round + 1 < budget.max_rounds;
-            natural_stop = StopReason::stagnation;
-            break;
-        }
-
-        previous_potential = current_potential;
+    if (!enumeration_improved) {
+        B = std::move(original);
+        out.completed = true;
+        out.changed = false;
+        out.stop_reason = StopReason::no_change;
+        out.potential_drop_per_dimension = 0.0;
+        out.first_gso_log_drop = 0.0;
+        return out;
     }
 
     const double final_potential = log_potential(B);

@@ -124,10 +124,6 @@ int run_best_bgj(Pool_hd_t& pool, int action_beta) {
 long target_database_size(int csd, const SieveBudget& budget) {
     long double expected =
         3.2L * std::pow(4.0L / 3.0L, static_cast<long double>(csd) * 0.5L) - 5.0L;
-    const long double vector_multiplier =
-        static_cast<long double>(environment_double(
-            "LATTICE_SIEVE_VECTOR_MULTIPLIER", 1.25, 1.0, 2.0));
-    expected *= vector_multiplier;
     expected = std::min(expected, static_cast<long double>(budget.max_vectors));
     expected = std::max(expected, static_cast<long double>(csd + 64));
     expected = std::min(expected,
@@ -163,12 +159,19 @@ SieveBudget sieve_budget_from_environment() {
     budget.bgj_max_seconds = environment_double(
         "LATTICE_SIEVE_BGJ_MAX_SECONDS", budget.bgj_max_seconds, 1.0,
         budget.max_wall_seconds);
-    budget.no_solution_seconds = environment_double(
-        "LATTICE_SIEVE_NO_SOLUTION_SECONDS", budget.no_solution_seconds,
-        10.0, budget.bgj_max_seconds);
+    budget.bgj_max_seconds = std::min(
+        budget.bgj_max_seconds, std::max(1.0, budget.max_wall_seconds - 10.0));
+    budget.no_shorter_seconds = environment_double(
+        "LATTICE_SIEVE_NO_SHORTER_SECONDS", budget.no_shorter_seconds,
+        0.0, budget.bgj_max_seconds);
+    if (budget.no_shorter_seconds <= 0.0) {
+        budget.no_shorter_seconds = environment_double(
+            "LATTICE_SIEVE_NO_SOLUTION_SECONDS", 0.0,
+            0.0, budget.bgj_max_seconds);
+    }
     budget.no_progress_seconds = environment_double(
         "LATTICE_SIEVE_NO_PROGRESS_SECONDS", budget.no_progress_seconds,
-        10.0, budget.bgj_max_seconds);
+        0.0, budget.bgj_max_seconds);
     budget.report_seconds = environment_double(
         "LATTICE_SIEVE_REPORT_SECONDS", budget.report_seconds, 1.0, 3600.0);
     budget.progressive = false;
@@ -242,20 +245,31 @@ SieveRunInfo run_local_extreme_sieve(Matrix& block, int64_t matrix_id,
 
             const std::string bgj_max_seconds =
                 std::to_string(budget.bgj_max_seconds);
-            const std::string no_solution_seconds =
-                std::to_string(budget.no_solution_seconds);
-            const std::string no_progress_seconds =
-                std::to_string(budget.no_progress_seconds);
             const std::string report_seconds =
                 std::to_string(budget.report_seconds);
             ::setenv("LATTICE_SIEVE_BGJ_MAX_SECONDS",
                      bgj_max_seconds.c_str(), 1);
-            ::setenv("LATTICE_SIEVE_NO_SOLUTION_SECONDS",
-                     no_solution_seconds.c_str(), 1);
-            ::setenv("LATTICE_SIEVE_NO_PROGRESS_SECONDS",
-                     no_progress_seconds.c_str(), 1);
             ::setenv("LATTICE_SIEVE_REPORT_SECONDS",
                      report_seconds.c_str(), 1);
+
+            if (budget.no_shorter_seconds > 0.0) {
+                const std::string value =
+                    std::to_string(budget.no_shorter_seconds);
+                ::setenv("LATTICE_SIEVE_NO_SHORTER_SECONDS",
+                         value.c_str(), 1);
+            } else {
+                ::unsetenv("LATTICE_SIEVE_NO_SHORTER_SECONDS");
+                ::unsetenv("LATTICE_SIEVE_NO_SOLUTION_SECONDS");
+            }
+
+            if (budget.no_progress_seconds > 0.0) {
+                const std::string value =
+                    std::to_string(budget.no_progress_seconds);
+                ::setenv("LATTICE_SIEVE_NO_PROGRESS_SECONDS",
+                         value.c_str(), 1);
+            } else {
+                ::unsetenv("LATTICE_SIEVE_NO_PROGRESS_SECONDS");
+            }
 
             StopReason native_stop_reason = StopReason::none;
             int last_return = 0;
@@ -271,7 +285,9 @@ SieveRunInfo run_local_extreme_sieve(Matrix& block, int64_t matrix_id,
 
                 if (last_return == -2) {
                     native_stop_reason = StopReason::budget_exhausted;
-                } else if (last_return == -3 || last_return == -1) {
+                } else if (last_return == -3 ||
+                           last_return == -4 ||
+                           last_return == -1) {
                     native_stop_reason = StopReason::stagnation;
                 } else if (pool.bgj_stop_code ==
                            Pool_hd_t::bgj_stop_saturation) {
@@ -281,14 +297,15 @@ SieveRunInfo run_local_extreme_sieve(Matrix& block, int64_t matrix_id,
                 if (budget.max_wall_seconds > 0.0) {
                     const double elapsed = std::chrono::duration<double>(
                         std::chrono::steady_clock::now() - started).count();
-                    if (elapsed >= budget.max_wall_seconds) {
-                        info.stop_reason = StopReason::budget_exhausted;
-                        break;
+                    if (elapsed >= budget.max_wall_seconds &&
+                        native_stop_reason == StopReason::none) {
+                        native_stop_reason = StopReason::budget_exhausted;
                     }
                 }
 
                 if (!budget.progressive || pool.CSD >= maximum_csd) break;
-                if (last_return == -1 && pool.CSD <= 100 && pool.check_dim_lose() == -1) {
+                if (last_return < 0 && pool.CSD <= 100 &&
+                    pool.check_dim_lose() == -1) {
                     break;
                 }
                 pool.extend_left();
@@ -306,26 +323,22 @@ SieveRunInfo run_local_extreme_sieve(Matrix& block, int64_t matrix_id,
                              recovery_reserve_seconds);
             };
 
-            const char* target_name =
-                dimension >= 95 ? "LATTICE_SIEVE_DH_TARGET_95"
-                : dimension >= 80 ? "LATTICE_SIEVE_DH_TARGET_80_94"
-                                  : "LATTICE_SIEVE_DH_TARGET_61_79";
-            const double default_target =
-                dimension >= 95 ? 0.95 : dimension >= 80 ? 0.97 : 0.99;
-            const double target_factor = environment_double(
-                target_name, default_target, 0.85, 1.05);
-            const double target_length =
-                std::sqrt(std::max(0.0, pool.gh2_scaled())) * target_factor;
-
             long inserted_position = -1;
             int insertion_status = -1;
+            const bool normal_bgj_completion =
+                native_stop_reason == StopReason::none ||
+                native_stop_reason == StopReason::quality_target_reached;
             const double available_seconds = remaining_seconds();
-            if (budget.enable_dual_hash && pool.CSD >= 60 &&
+
+            if (normal_bgj_completion &&
+                budget.enable_dual_hash &&
+                pool.CSD >= 60 &&
                 available_seconds > 1.0) {
                 insertion_status = pool.dh_insert(
                     0, budget.insertion_eta, available_seconds,
-                    &inserted_position, target_length);
+                    &inserted_position, 0.0);
             }
+
             if (insertion_status != 0) {
                 insertion_status = pool.insert(
                     0, budget.insertion_eta, &inserted_position, 1);

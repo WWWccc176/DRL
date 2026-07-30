@@ -171,8 +171,8 @@ struct hw {
 
 
 ///////////////// bgj config /////////////////
-#define BGJ_DEFAULT_SATURATION_RADIUS   1.325
-#define BGJ_DEFAULT_SATURATION_RATIO    0.55
+#define BGJ_DEFAULT_SATURATION_RADIUS   4./3.
+#define BGJ_DEFAULT_SATURATION_RATIO    0.375
 #define BGJ_DEFAULT_IMPROVE_RATIO       0.71
 #define BGJ_CENTER_IMPROVE_RATIO        0.77
 

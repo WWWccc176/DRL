@@ -447,7 +447,8 @@ struct Pool_hd_t {
     static constexpr int bgj_stop_saturation = 1;
     static constexpr int bgj_stop_stuck = 2;
     static constexpr int bgj_stop_time_budget = 3;
-    static constexpr int bgj_stop_no_progress = 4;
+    static constexpr int bgj_stop_no_shorter = 4;
+    static constexpr int bgj_stop_no_progress = 5;
 
     int down_sieve_flag = 0;
     int bgj_stop_code = bgj_stop_completed;
@@ -456,7 +457,7 @@ struct Pool_hd_t {
     long bgj_batches = 0;
     long bgj_solution_vectors = 0;
     int bgj_best_score = 0;
-    
+
     private:
     long _num_threads;
 

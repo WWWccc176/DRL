@@ -5,53 +5,53 @@
 #include "../include/pool_hd_device.h"
 #include "../include/bgj_hd_device.h"
 
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
-#include <limits>
 
 namespace {
 
-double bgj_environment_double(const char *name, double fallback,
+double bgj_environment_double(const char* name, double fallback,
                               double minimum, double maximum) {
-    const char *raw = std::getenv(name);
+    const char* raw = std::getenv(name);
     if (!raw || !*raw) return fallback;
-    char *end = nullptr;
+    char* end = nullptr;
     const double value = std::strtod(raw, &end);
     if (end == raw || *end != '\0' || !std::isfinite(value)) return fallback;
     return std::max(minimum, std::min(maximum, value));
 }
 
-long bgj_environment_long(const char *name, long fallback,
+long bgj_environment_long(const char* name, long fallback,
                           long minimum, long maximum) {
-    const char *raw = std::getenv(name);
+    const char* raw = std::getenv(name);
     if (!raw || !*raw) return fallback;
-    char *end = nullptr;
+    char* end = nullptr;
     const long value = std::strtol(raw, &end, 10);
     if (end == raw || *end != '\0') return fallback;
     return std::max(minimum, std::min(maximum, value));
 }
 
-int bgj_best_score(const Pool_hd_t *pool) {
+int bgj_best_score(const Pool_hd_t* pool) {
     for (int score = 1; score < 65535; ++score) {
         if (pool->score_stat[score] != 0) return score;
     }
     return 65535;
 }
 
-const char *bgj_stop_name(int code) {
+const char* bgj_stop_name(int code) {
     switch (code) {
         case Pool_hd_t::bgj_stop_saturation: return "target_reached";
         case Pool_hd_t::bgj_stop_stuck: return "native_stuck";
         case Pool_hd_t::bgj_stop_time_budget: return "time_budget";
+        case Pool_hd_t::bgj_stop_no_shorter: return "no_shorter_vector";
         case Pool_hd_t::bgj_stop_no_progress: return "no_progress";
         default: return "completed";
     }
 }
 
-} // namespace
+}  // namespace
+
 
 int Pool_hd_t::_bgj_Sieve_hd(int bgj) {
     if (pwc_manager->max_cached_chunks() > pwc_manager_t::pwc_default_max_cached_chunks) {
@@ -1510,48 +1510,58 @@ int Bucketer_t::run() {
         }
         pp += sprintf(tmp + pp, "\b");
         lg_dbg("device init done, used gram: %s, pageable RAM %.2f GB, pinned RAM %.2f GB", tmp,
-                _buc_buf->pageable_ram.load() / 1e9, _buc_buf->pinned_ram.load() / 1e9);
+                _buc_buf->pageable_ram.load() / 1e9,
+                _buc_buf->pinned_ram.load() / 1e9);
     }
     #endif
 
     const int gpu_id = static_cast<int>(bgj_environment_long(
         "A11_PHYSICAL_GPU_ID", -1, -1, 1024));
     const double hard_seconds = bgj_environment_double(
-        "LATTICE_SIEVE_BGJ_MAX_SECONDS", 185.0, 1.0, 86400.0);
-    const double default_no_solution =
-        _pool->CSD >= 94 ? 120.0 : (_pool->CSD >= 79 ? 90.0 : 60.0);
+        "LATTICE_SIEVE_BGJ_MAX_SECONDS", 180.0, 1.0, 86400.0);
+
+    const double default_no_shorter =
+        _pool->CSD >= 94 ? 120.0 : (_pool->CSD >= 79 ? 100.0 : 75.0);
+    double no_shorter_seconds = bgj_environment_double(
+        "LATTICE_SIEVE_NO_SHORTER_SECONDS", -1.0, -1.0, hard_seconds);
+    if (no_shorter_seconds < 0.0) {
+        no_shorter_seconds = bgj_environment_double(
+            "LATTICE_SIEVE_NO_SOLUTION_SECONDS", default_no_shorter,
+            10.0, hard_seconds);
+    }
+
     const double default_no_progress =
         _pool->CSD >= 94 ? 75.0 : (_pool->CSD >= 79 ? 60.0 : 45.0);
-    const double no_solution_seconds = bgj_environment_double(
-        "LATTICE_SIEVE_NO_SOLUTION_SECONDS", default_no_solution,
-        10.0, hard_seconds);
     const double no_progress_seconds = bgj_environment_double(
         "LATTICE_SIEVE_NO_PROGRESS_SECONDS", default_no_progress,
         10.0, hard_seconds);
     const double report_seconds = bgj_environment_double(
         "LATTICE_SIEVE_REPORT_SECONDS", 10.0, 1.0, 3600.0);
 
-    auto last_progress = started;
+    auto last_best_improvement = started;
     auto last_report = started;
     int best_score = bgj_best_score(_pool);
-    long max_solution_vectors = 0;
+    const int initial_best_score = best_score;
+    long max_solution_vectors = _swc->ready_nvecs_estimate();
     bool found_shorter_vector = false;
     long batch_count = 0;
     int first_batch = 1;
 
-    lg_info("BGJ start gpu=%d CSD=%d hard=%.0fs no_solution=%.0fs no_progress=%.0fs best_score=%d",
-            gpu_id, _pool->CSD, hard_seconds, no_solution_seconds,
-            no_progress_seconds, best_score);
+    lg_info("BGJ start gpu=%d CSD=%d hard=%.0fs no_shorter=%.0fs no_progress=%.0fs initial_best=%d",
+            gpu_id, _pool->CSD, hard_seconds, no_shorter_seconds,
+            no_progress_seconds, initial_best_score);
 
     for (;;) {
         std::unique_lock<std::mutex> buc_lock(_buc_mtx);
         for (;;) {
-            int bwc_num_ready = _bwc->num_ready();
+            const int bwc_num_ready = _bwc->num_ready();
             if ((_num_buc_slimit - bwc_num_ready > _min_batch0 &&
                  bwc_num_ready < 2 * _min_batch0) ||
-                (flag & flag_stuck)) break;
-            _buc_cv.wait_for(buc_lock, std::chrono::milliseconds(1000));
+                (flag & flag_stuck)) {
+                break;
+            }
 
+            _buc_cv.wait_for(buc_lock, std::chrono::milliseconds(1000));
             const double waiting_elapsed = std::chrono::duration<double>(
                 std::chrono::steady_clock::now() - started).count();
             if (waiting_elapsed >= hard_seconds) {
@@ -1573,32 +1583,34 @@ int Bucketer_t::run() {
             break;
         }
 
-        long swc_before = _swc->ready_nvecs_estimate();
-        int replace_th = traits::l0_replace_threshold(_pool, swc_before, _improve_ratio);
+        const long swc_rne = _swc->ready_nvecs_estimate();
+        const int replace_th = traits::l0_replace_threshold(
+            _pool, swc_rne, _improve_ratio);
+
         #if ENABLE_PROFILING
         long old_oss = logger->ev_old_score_sum;
         long old_nss = logger->ev_new_score_sum;
+        struct timeval batch_start;
+        gettimeofday(&batch_start, NULL);
         #endif
 
         int batch0 = traits::l0_max_batch0_under(
             _num_buc_slimit - _bwc->num_ready());
         if (batch0 > _max_batch0) batch0 = _max_batch0;
 
-        #if ENABLE_PROFILING
-        struct timeval batch_start;
-        gettimeofday(&batch_start, NULL);
-        #endif
-
-        for (int i = 0; i < batch0; i++) buc_id[i] = _bwc->push_bucket();
+        for (int i = 0; i < batch0; i++) {
+            buc_id[i] = _bwc->push_bucket();
+        }
 
         _buc_buf->center_prep(batch0, first_batch);
 
         for (int i = 0; i < batch0; i++) {
-            int bid = buc_id[i];
+            const int bid = buc_id[i];
             memcpy(ctr_record + bid * Pool_hd_t::vec_nbytes,
                    _buc_buf->h_center16 + i * _buc_buf->CSD16,
                    _buc_buf->CSD16);
-            memset(ctr_record + bid * Pool_hd_t::vec_nbytes + _buc_buf->CSD16,
+            memset(ctr_record + bid * Pool_hd_t::vec_nbytes +
+                       _buc_buf->CSD16,
                    0, Pool_hd_t::vec_nbytes - _buc_buf->CSD16);
         }
 
@@ -1626,7 +1638,7 @@ int Bucketer_t::run() {
             batch_end.tv_usec - batch_start.tv_usec;
         logger->ev_bk0_num += batch0;
         for (int i = 0; i < batch0; i++) {
-            int bnc = _bwc->bucket_num_chunks(buc_id[i]);
+            const int bnc = _bwc->bucket_num_chunks(buc_id[i]);
             logger->ev_ld_chunks += bnc;
             logger->ev_st_chunks += bnc;
         }
@@ -1634,30 +1646,27 @@ int Bucketer_t::run() {
         old_nss = logger->ev_new_score_sum - old_nss;
         #endif
 
-        for (int i = 0; i < batch0; i++) _bwc->bucket_finalize(buc_id[i]);
+        for (int i = 0; i < batch0; i++) {
+            _bwc->bucket_finalize(buc_id[i]);
+        }
         _signal_new_buc_ready();
 
         ++batch_count;
         const auto now = std::chrono::steady_clock::now();
         const double elapsed =
             std::chrono::duration<double>(now - started).count();
-        const long solution_vectors = _swc->ready_nvecs_estimate();
-        const int current_best_score = bgj_best_score(_pool);
+        max_solution_vectors = std::max(
+            max_solution_vectors, _swc->ready_nvecs_estimate());
 
-        bool progressed = false;
+        const int current_best_score = bgj_best_score(_pool);
         if (current_best_score < best_score) {
             best_score = current_best_score;
-            found_shorter_vector = true;
-            progressed = true;
+            found_shorter_vector = best_score < initial_best_score;
+            last_best_improvement = now;
         }
-        if (solution_vectors > max_solution_vectors) {
-            max_solution_vectors = solution_vectors;
-            progressed = true;
-        }
-        if (progressed) last_progress = now;
 
-        const double idle =
-            std::chrono::duration<double>(now - last_progress).count();
+        const double idle = std::chrono::duration<double>(
+            now - last_best_improvement).count();
 
         _pool->bgj_elapsed_seconds = elapsed;
         _pool->bgj_idle_seconds = idle;
@@ -1669,22 +1678,25 @@ int Bucketer_t::run() {
             report_seconds) {
             #if ENABLE_PROFILING
             if (old_oss > 0) {
-                lg_info("BGJ progress gpu=%d batch=%ld elapsed=%.1fs idle=%.1fs buckets=%ld/%ld sol=%ld best_score=%d goal_norm=%d goal_score=%d quality=%.4f",
-                        gpu_id, batch_count, elapsed, idle, _bwc->num_ready(),
-                        _num_buc_slimit, max_solution_vectors, best_score,
-                        _reducer->goal_norm, _reducer->goal_score,
+                lg_info("BGJ progress gpu=%d CSD=%d batch=%ld elapsed=%.1fs since_best=%.1fs buckets=%ld/%ld sol=%ld best=%d goal=%d quality=%.4f",
+                        gpu_id, _pool->CSD, batch_count, elapsed, idle,
+                        _bwc->num_ready(), _num_buc_slimit,
+                        max_solution_vectors, best_score,
+                        _reducer->goal_score,
                         old_nss / static_cast<double>(old_oss));
             } else {
-                lg_info("BGJ progress gpu=%d batch=%ld elapsed=%.1fs idle=%.1fs buckets=%ld/%ld sol=%ld best_score=%d goal_norm=%d goal_score=%d quality=n/a",
-                        gpu_id, batch_count, elapsed, idle, _bwc->num_ready(),
-                        _num_buc_slimit, max_solution_vectors, best_score,
-                        _reducer->goal_norm, _reducer->goal_score);
+                lg_info("BGJ progress gpu=%d CSD=%d batch=%ld elapsed=%.1fs since_best=%.1fs buckets=%ld/%ld sol=%ld best=%d goal=%d quality=n/a",
+                        gpu_id, _pool->CSD, batch_count, elapsed, idle,
+                        _bwc->num_ready(), _num_buc_slimit,
+                        max_solution_vectors, best_score,
+                        _reducer->goal_score);
             }
             #else
-            lg_info("BGJ progress gpu=%d batch=%ld elapsed=%.1fs idle=%.1fs buckets=%ld/%ld sol=%ld best_score=%d goal_norm=%d goal_score=%d",
-                    gpu_id, batch_count, elapsed, idle, _bwc->num_ready(),
-                    _num_buc_slimit, max_solution_vectors, best_score,
-                    _reducer->goal_norm, _reducer->goal_score);
+            lg_info("BGJ progress gpu=%d CSD=%d batch=%ld elapsed=%.1fs since_best=%.1fs buckets=%ld/%ld sol=%ld best=%d goal=%d",
+                    gpu_id, _pool->CSD, batch_count, elapsed, idle,
+                    _bwc->num_ready(), _num_buc_slimit,
+                    max_solution_vectors, best_score,
+                    _reducer->goal_score);
             #endif
             last_report = now;
         }
@@ -1702,16 +1714,14 @@ int Bucketer_t::run() {
             break;
         }
 
-        if (!found_shorter_vector && max_solution_vectors == 0 &&
-            elapsed >= no_solution_seconds) {
+        if (!found_shorter_vector && elapsed >= no_shorter_seconds) {
             flag |= flag_no_progress;
-            _pool->bgj_stop_code = Pool_hd_t::bgj_stop_no_progress;
+            _pool->bgj_stop_code = Pool_hd_t::bgj_stop_no_shorter;
             _signal_buc_done(true);
             break;
         }
 
-        if ((found_shorter_vector || max_solution_vectors > 0) &&
-            idle >= no_progress_seconds) {
+        if (found_shorter_vector && idle >= no_progress_seconds) {
             flag |= flag_no_progress;
             _pool->bgj_stop_code = Pool_hd_t::bgj_stop_no_progress;
             _signal_buc_done(true);
@@ -1719,17 +1729,18 @@ int Bucketer_t::run() {
         }
     }
 
-    const double final_elapsed = std::chrono::duration<double>(
-        std::chrono::steady_clock::now() - started).count();
-    _pool->bgj_elapsed_seconds = final_elapsed;
-    _pool->bgj_idle_seconds = std::chrono::duration<double>(
-        std::chrono::steady_clock::now() - last_progress).count();
+    const auto stopped_at = std::chrono::steady_clock::now();
+    _pool->bgj_elapsed_seconds =
+        std::chrono::duration<double>(stopped_at - started).count();
+    _pool->bgj_idle_seconds =
+        std::chrono::duration<double>(
+            stopped_at - last_best_improvement).count();
     _pool->bgj_batches = batch_count;
     _pool->bgj_solution_vectors = max_solution_vectors;
     _pool->bgj_best_score = best_score;
 
-    lg_info("BGJ stop gpu=%d reason=%s elapsed=%.1fs idle=%.1fs batches=%ld sol=%ld best_score=%d goal_score=%d",
-            gpu_id, bgj_stop_name(_pool->bgj_stop_code),
+    lg_info("BGJ stop gpu=%d CSD=%d reason=%s elapsed=%.1fs since_best=%.1fs batches=%ld sol=%ld best=%d goal=%d",
+            gpu_id, _pool->CSD, bgj_stop_name(_pool->bgj_stop_code),
             _pool->bgj_elapsed_seconds, _pool->bgj_idle_seconds,
             _pool->bgj_batches, _pool->bgj_solution_vectors,
             _pool->bgj_best_score, _reducer->goal_score);
@@ -1738,13 +1749,16 @@ int Bucketer_t::run() {
     _buc_cv.wait(buc_lock, [this] { return (flag & flag_final); });
     buc_lock.unlock();
 
-    int replace_th = traits::l0_replace_threshold(
+    const int replace_th = traits::l0_replace_threshold(
         _pool, _swc->ready_nvecs_estimate(), _improve_ratio);
 
     buc_iter->reset();
+
     for (int tid = 0; tid < _num_threads; tid++) {
         _buc_pool[tid]->push(
-            [this, replace_th, tid] { _batch(tid, replace_th, 0); });
+            [this, replace_th, tid] {
+                _batch(tid, replace_th, 0);
+            });
     }
     for (int tid = 0; tid < _num_threads; tid++) {
         _buc_pool[tid]->wait_sleep();
@@ -1771,7 +1785,8 @@ int Bucketer_t::run() {
     lg_report();
 
     if (_pool->bgj_stop_code == Pool_hd_t::bgj_stop_time_budget) return -2;
-    if (_pool->bgj_stop_code == Pool_hd_t::bgj_stop_no_progress) return -3;
+    if (_pool->bgj_stop_code == Pool_hd_t::bgj_stop_no_shorter) return -3;
+    if (_pool->bgj_stop_code == Pool_hd_t::bgj_stop_no_progress) return -4;
     if (_pool->bgj_stop_code == Pool_hd_t::bgj_stop_stuck) return -1;
     return 0;
 }
