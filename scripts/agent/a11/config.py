@@ -88,7 +88,10 @@ BGJ3_MIN_BETA = 95
 # Run the integrated result summarizer and cosine-heatmap generator after a
 # normally completed training job. Set A11_AUTO_ANALYZE=0 to disable it.
 AUTO_ANALYZE_RESULTS = os.environ.get("A11_AUTO_ANALYZE", "1").strip().lower() not in {
-    "0", "false", "no", "off"
+    "0",
+    "false",
+    "no",
+    "off",
 }
 
 
@@ -202,7 +205,6 @@ SIEVE_TIME_BUDGET_S = float(
         "210.0",
     )
 )
-
 
 
 # Explicit host working-set budget for each persistent GPU worker.

@@ -8,7 +8,11 @@
 
 
 #include <atomic>
+#include <cerrno>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <thread>
+#include <unistd.h>
 
 void _start_ck_allocator();
 void _destory_ck_allocator();
@@ -37,7 +41,6 @@ typedef swc_manager_tmpl<int> swc_manager_t;
 #include <sys/time.h>
 
 #if ENABLE_PROFILING
-#include <unistd.h>
 #include <sys/resource.h>
 
 #define cond_lg_init(_cond)                         \
@@ -1467,11 +1470,6 @@ template <class logger_t> pwc_manager_tmpl<logger_t>::~pwc_manager_tmpl() {
 template <class logger_t> pwc_manager_tmpl<logger_t>::pwc_manager_tmpl() : 
                           pwc_manager_tmpl(pwc_default_loading_threads, pwc_default_syncing_threads, pwc_default_max_cached_chunks) {}
 
-#if MULTI_SSD
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <cerrno>
-#endif
 
 template <class logger_t> int pwc_manager_tmpl<logger_t>::_set_prefix(const char *dirname, const char *basis_prefix) {
     #if MULTI_SSD
@@ -1503,7 +1501,8 @@ template <class logger_t> int pwc_manager_tmpl<logger_t>::_set_prefix(const char
     #endif
     #else
     int first_time_set = this->_prefix[0] == '\0';
-    int ret = snprintf(this->_prefix, sizeof(this->_prefix), ".%s/.%s_", dirname, basis_prefix);
+    int ret = snprintf(this->_prefix, sizeof(this->_prefix), ".%s/.%s_%ld_",
+                       dirname, basis_prefix, static_cast<long>(::getpid()));
     if (ret >= sizeof(this->_prefix)) {
         this->_prefix[sizeof(this->_prefix) - 1] = '\0';
         lg_warn("prefix truncated");

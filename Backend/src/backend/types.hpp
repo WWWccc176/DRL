@@ -70,7 +70,7 @@ struct SieveBudget {
     int max_csd = 175;
     int max_bgj_calls = 1;
     double max_wall_seconds = 210.0;
-    double bgj_max_seconds = 180.0;
+    double bgj_max_seconds = 210.0;
     double no_shorter_seconds = 0.0;
     double no_progress_seconds = 0.0;
     double report_seconds = 10.0;

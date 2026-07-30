@@ -1518,23 +1518,7 @@ int Bucketer_t::run() {
     const int gpu_id = static_cast<int>(bgj_environment_long(
         "A11_PHYSICAL_GPU_ID", -1, -1, 1024));
     const double hard_seconds = bgj_environment_double(
-        "LATTICE_SIEVE_BGJ_MAX_SECONDS", 180.0, 1.0, 86400.0);
-
-    const double default_no_shorter =
-        _pool->CSD >= 94 ? 120.0 : (_pool->CSD >= 79 ? 100.0 : 75.0);
-    double no_shorter_seconds = bgj_environment_double(
-        "LATTICE_SIEVE_NO_SHORTER_SECONDS", -1.0, -1.0, hard_seconds);
-    if (no_shorter_seconds < 0.0) {
-        no_shorter_seconds = bgj_environment_double(
-            "LATTICE_SIEVE_NO_SOLUTION_SECONDS", default_no_shorter,
-            10.0, hard_seconds);
-    }
-
-    const double default_no_progress =
-        _pool->CSD >= 94 ? 75.0 : (_pool->CSD >= 79 ? 60.0 : 45.0);
-    const double no_progress_seconds = bgj_environment_double(
-        "LATTICE_SIEVE_NO_PROGRESS_SECONDS", default_no_progress,
-        10.0, hard_seconds);
+        "LATTICE_SIEVE_BGJ_MAX_SECONDS", 210.0, 1.0, 86400.0);
     const double report_seconds = bgj_environment_double(
         "LATTICE_SIEVE_REPORT_SECONDS", 10.0, 1.0, 3600.0);
 
@@ -1543,13 +1527,11 @@ int Bucketer_t::run() {
     int best_score = bgj_best_score(_pool);
     const int initial_best_score = best_score;
     long max_solution_vectors = _swc->ready_nvecs_estimate();
-    bool found_shorter_vector = false;
     long batch_count = 0;
     int first_batch = 1;
 
-    lg_info("BGJ start gpu=%d CSD=%d hard=%.0fs no_shorter=%.0fs no_progress=%.0fs initial_best=%d",
-            gpu_id, _pool->CSD, hard_seconds, no_shorter_seconds,
-            no_progress_seconds, initial_best_score);
+    lg_info("BGJ start gpu=%d CSD=%d budget=%.0fs stop=target_or_budget initial_best=%d",
+            gpu_id, _pool->CSD, hard_seconds, initial_best_score);
 
     for (;;) {
         std::unique_lock<std::mutex> buc_lock(_buc_mtx);
@@ -1661,7 +1643,6 @@ int Bucketer_t::run() {
         const int current_best_score = bgj_best_score(_pool);
         if (current_best_score < best_score) {
             best_score = current_best_score;
-            found_shorter_vector = best_score < initial_best_score;
             last_best_improvement = now;
         }
 
@@ -1676,25 +1657,26 @@ int Bucketer_t::run() {
 
         if (std::chrono::duration<double>(now - last_report).count() >=
             report_seconds) {
+            const double remaining = std::max(0.0, hard_seconds - elapsed);
             #if ENABLE_PROFILING
             if (old_oss > 0) {
-                lg_info("BGJ progress gpu=%d CSD=%d batch=%ld elapsed=%.1fs since_best=%.1fs buckets=%ld/%ld sol=%ld best=%d goal=%d quality=%.4f",
-                        gpu_id, _pool->CSD, batch_count, elapsed, idle,
-                        _bwc->num_ready(), _num_buc_slimit,
+                lg_info("BGJ progress gpu=%d CSD=%d batch=%ld elapsed=%.1fs remaining=%.1fs since_best=%.1fs buckets=%ld/%ld sol=%ld best=%d goal=%d quality=%.4f",
+                        gpu_id, _pool->CSD, batch_count, elapsed, remaining,
+                        idle, _bwc->num_ready(), _num_buc_slimit,
                         max_solution_vectors, best_score,
                         _reducer->goal_score,
                         old_nss / static_cast<double>(old_oss));
             } else {
-                lg_info("BGJ progress gpu=%d CSD=%d batch=%ld elapsed=%.1fs since_best=%.1fs buckets=%ld/%ld sol=%ld best=%d goal=%d quality=n/a",
-                        gpu_id, _pool->CSD, batch_count, elapsed, idle,
-                        _bwc->num_ready(), _num_buc_slimit,
+                lg_info("BGJ progress gpu=%d CSD=%d batch=%ld elapsed=%.1fs remaining=%.1fs since_best=%.1fs buckets=%ld/%ld sol=%ld best=%d goal=%d quality=n/a",
+                        gpu_id, _pool->CSD, batch_count, elapsed, remaining,
+                        idle, _bwc->num_ready(), _num_buc_slimit,
                         max_solution_vectors, best_score,
                         _reducer->goal_score);
             }
             #else
-            lg_info("BGJ progress gpu=%d CSD=%d batch=%ld elapsed=%.1fs since_best=%.1fs buckets=%ld/%ld sol=%ld best=%d goal=%d",
-                    gpu_id, _pool->CSD, batch_count, elapsed, idle,
-                    _bwc->num_ready(), _num_buc_slimit,
+            lg_info("BGJ progress gpu=%d CSD=%d batch=%ld elapsed=%.1fs remaining=%.1fs since_best=%.1fs buckets=%ld/%ld sol=%ld best=%d goal=%d",
+                    gpu_id, _pool->CSD, batch_count, elapsed, remaining,
+                    idle, _bwc->num_ready(), _num_buc_slimit,
                     max_solution_vectors, best_score,
                     _reducer->goal_score);
             #endif
@@ -1714,19 +1696,6 @@ int Bucketer_t::run() {
             break;
         }
 
-        if (!found_shorter_vector && elapsed >= no_shorter_seconds) {
-            flag |= flag_no_progress;
-            _pool->bgj_stop_code = Pool_hd_t::bgj_stop_no_shorter;
-            _signal_buc_done(true);
-            break;
-        }
-
-        if (found_shorter_vector && idle >= no_progress_seconds) {
-            flag |= flag_no_progress;
-            _pool->bgj_stop_code = Pool_hd_t::bgj_stop_no_progress;
-            _signal_buc_done(true);
-            break;
-        }
     }
 
     const auto stopped_at = std::chrono::steady_clock::now();
@@ -1785,8 +1754,6 @@ int Bucketer_t::run() {
     lg_report();
 
     if (_pool->bgj_stop_code == Pool_hd_t::bgj_stop_time_budget) return -2;
-    if (_pool->bgj_stop_code == Pool_hd_t::bgj_stop_no_shorter) return -3;
-    if (_pool->bgj_stop_code == Pool_hd_t::bgj_stop_no_progress) return -4;
     if (_pool->bgj_stop_code == Pool_hd_t::bgj_stop_stuck) return -1;
     return 0;
 }

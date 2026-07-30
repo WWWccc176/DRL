@@ -2,7 +2,7 @@
 #define __CONFIG_H
 
 ///////////////// hardware config /////////////////
-#define MULTI_SSD 1
+#define MULTI_SSD 0
 #define MULTI_GPU 1
 
 #ifndef LATTICE_GPU_NUM
