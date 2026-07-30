@@ -443,7 +443,19 @@ struct Pool_hd_t {
     logger_t *logger = NULL;
     #endif
 
+    static constexpr int bgj_stop_completed = 0;
+    static constexpr int bgj_stop_saturation = 1;
+    static constexpr int bgj_stop_stuck = 2;
+    static constexpr int bgj_stop_time_budget = 3;
+    static constexpr int bgj_stop_no_progress = 4;
+
     int down_sieve_flag = 0;
+    int bgj_stop_code = bgj_stop_completed;
+    double bgj_elapsed_seconds = 0.0;
+    double bgj_idle_seconds = 0.0;
+    long bgj_batches = 0;
+    long bgj_solution_vectors = 0;
+    int bgj_best_score = 0;
     
     private:
     long _num_threads;
@@ -1490,7 +1502,7 @@ template <class logger_t> int pwc_manager_tmpl<logger_t>::_set_prefix(const char
     #endif
     #else
     int first_time_set = this->_prefix[0] == '\0';
-    int ret = snprintf(this->_prefix, sizeof(this->_prefix), ".%s/.%ld_%s_", dirname, static_cast<long>(::getpid()), basis_prefix);
+    int ret = snprintf(this->_prefix, sizeof(this->_prefix), ".%s/.%s_", dirname, basis_prefix);
     if (ret >= sizeof(this->_prefix)) {
         this->_prefix[sizeof(this->_prefix) - 1] = '\0';
         lg_warn("prefix truncated");

@@ -70,6 +70,11 @@ py::dict reduce_result_to_dict(const lattice_backend::ReduceResult& result) {
     out["dimension_for_free"] = result.dimension_for_free;
     out["bgj_calls"] = result.bgj_calls;
     out["database_vectors"] = result.database_vectors;
+    out["sieve_batches"] = result.sieve_batches;
+    out["sieve_solution_vectors"] = result.sieve_solution_vectors;
+    out["sieve_best_score"] = result.sieve_best_score;
+    out["sieve_elapsed_seconds"] = result.sieve_elapsed_seconds;
+    out["sieve_idle_seconds"] = result.sieve_idle_seconds;
     out["time_ms"] = result.time_ms;
     return out;
 }
@@ -350,11 +355,20 @@ py::dict sieve_reduce_serialized_api(
             result.completed = sieve.completed;
             result.exact = sieve.exact;
             result.stop_reason = sieve.stop_reason;
+            result.early_stopped =
+                sieve.stop_reason == lattice_backend::StopReason::budget_exhausted ||
+                sieve.stop_reason == lattice_backend::StopReason::stagnation ||
+                sieve.stop_reason == lattice_backend::StopReason::quality_target_reached;
             result.error = sieve.error;
             result.sieve_dimension = sieve.final_csd;
             result.dimension_for_free = sieve.dimension_for_free;
             result.bgj_calls = sieve.bgj_calls;
             result.database_vectors = sieve.vectors;
+            result.sieve_batches = sieve.batches;
+            result.sieve_solution_vectors = sieve.solution_vectors;
+            result.sieve_best_score = sieve.best_score;
+            result.sieve_elapsed_seconds = sieve.elapsed_seconds;
+            result.sieve_idle_seconds = sieve.idle_seconds;
 
             // Exact post-BKZ/LLL is deliberately performed only by
             // apply_external_block() in the process that owns the full MPZ
@@ -378,13 +392,16 @@ py::dict sieve_reduce_serialized_api(
             (b1_relative_improvement >= min_b1_rel_improvement ||
              logpot_improvement >= min_logpot_improvement);
 
-        if (result.completed && !result.changed) {
+        if (result.completed && !result.changed &&
+            (result.stop_reason == lattice_backend::StopReason::none ||
+             result.stop_reason == lattice_backend::StopReason::completed)) {
             result.stop_reason = lattice_backend::StopReason::no_change;
         } else if (result.completed && result.changed &&
                    !result.non_worsening) {
             result.stop_reason =
                 lattice_backend::StopReason::non_worsening_rejected;
-        } else if (result.accepted) {
+        } else if (result.accepted &&
+                   result.stop_reason == lattice_backend::StopReason::none) {
             result.stop_reason = lattice_backend::StopReason::completed;
         }
     }

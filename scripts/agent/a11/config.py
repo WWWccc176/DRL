@@ -106,7 +106,7 @@ EXPECTED_LOGICAL_CPUS = int(
 MAIN_CPU_THREADS = int(
     os.environ.get(
         "A11_MAIN_CPU_THREADS",
-        "4",
+        "1",
     )
 )
 
@@ -170,7 +170,7 @@ SIEVE_MIN_BETA = int(
 # Budgeted sieve action
 # ============================================================
 
-# The native persistent worker returns one exact recovered block per action.
+# Stop after collecting this many exact recovered candidates.
 SIEVE_MAX_CANDIDATES = int(
     os.environ.get(
         "A11_SIEVE_MAX_CANDIDATES",
@@ -178,7 +178,7 @@ SIEVE_MAX_CANDIDATES = int(
     )
 )
 
-# Exactly one complete BGJ invocation is allowed for one RL action.
+# Maximum number of complete BGJ stages for one RL action.
 SIEVE_MAX_ROUNDS = int(
     os.environ.get(
         "A11_SIEVE_MAX_ROUNDS",
@@ -200,6 +200,83 @@ SIEVE_TIME_BUDGET_S = float(
     os.environ.get(
         "A11_SIEVE_TIME_BUDGET_S",
         "210.0",
+    )
+)
+
+SIEVE_BGJ_MAX_SECONDS = float(
+    os.environ.get(
+        "A11_SIEVE_BGJ_MAX_SECONDS",
+        "185.0",
+    )
+)
+
+SIEVE_NO_SOLUTION_SECONDS = float(
+    os.environ.get(
+        "A11_SIEVE_NO_SOLUTION_SECONDS",
+        "90.0",
+    )
+)
+
+SIEVE_NO_PROGRESS_SECONDS = float(
+    os.environ.get(
+        "A11_SIEVE_NO_PROGRESS_SECONDS",
+        "60.0",
+    )
+)
+
+SIEVE_REPORT_SECONDS = float(
+    os.environ.get(
+        "A11_SIEVE_REPORT_SECONDS",
+        "10.0",
+    )
+)
+
+SIEVE_MAX_VECTORS = int(
+    os.environ.get(
+        "A11_SIEVE_MAX_VECTORS",
+        "3000000",
+    )
+)
+
+SIEVE_VECTOR_MULTIPLIER = float(
+    os.environ.get(
+        "A11_SIEVE_VECTOR_MULTIPLIER",
+        "1.25",
+    )
+)
+
+SIEVE_INSERT_ETA = float(
+    os.environ.get(
+        "A11_SIEVE_INSERT_ETA",
+        "1.015",
+    )
+)
+
+SIEVE_RECOVERY_RESERVE_SECONDS = float(
+    os.environ.get(
+        "A11_SIEVE_RECOVERY_RESERVE_SECONDS",
+        "8.0",
+    )
+)
+
+SIEVE_DH_TARGET_61_79 = float(
+    os.environ.get(
+        "A11_SIEVE_DH_TARGET_61_79",
+        "0.99",
+    )
+)
+
+SIEVE_DH_TARGET_80_94 = float(
+    os.environ.get(
+        "A11_SIEVE_DH_TARGET_80_94",
+        "0.97",
+    )
+)
+
+SIEVE_DH_TARGET_95 = float(
+    os.environ.get(
+        "A11_SIEVE_DH_TARGET_95",
+        "0.95",
     )
 )
 
@@ -314,134 +391,9 @@ SIEVE_SERVICE_CLOSE_SECONDS = float(
 ENUM_TIME_BUDGET_S = float(
     os.environ.get(
         "A11_ENUM_TIME_BUDGET_S",
-        "75.0",
+        "60.0",
     )
 )
-
-
-# A11_STRICT_NATIVE_DEFAULTS_BEGIN
-SIEVE_MAX_VECTORS = int(
-    os.environ.get(
-        "A11_SIEVE_MAX_VECTORS",
-        "3000000",
-    )
-)
-
-SIEVE_VECTOR_MULTIPLIER = float(
-    os.environ.get(
-        "A11_SIEVE_VECTOR_MULTIPLIER",
-        "1.25",
-    )
-)
-
-SIEVE_DH_TARGET_61_79 = float(
-    os.environ.get(
-        "A11_SIEVE_DH_TARGET_61_79",
-        "0.99",
-    )
-)
-
-SIEVE_DH_TARGET_80_94 = float(
-    os.environ.get(
-        "A11_SIEVE_DH_TARGET_80_94",
-        "0.97",
-    )
-)
-
-SIEVE_DH_TARGET_95 = float(
-    os.environ.get(
-        "A11_SIEVE_DH_TARGET_95",
-        "0.95",
-    )
-)
-
-SIEVE_INSERT_ETA = float(
-    os.environ.get(
-        "A11_SIEVE_INSERT_ETA",
-        "1.015",
-    )
-)
-
-SIEVE_RECOVERY_RESERVE_SECONDS = float(
-    os.environ.get(
-        "A11_SIEVE_RECOVERY_RESERVE_SECONDS",
-        "8.0",
-    )
-)
-
-ENUM_MAX_ROUNDS = int(
-    os.environ.get(
-        "A11_ENUM_MAX_ROUNDS",
-        "3",
-    )
-)
-
-ENUM_LLL_DELTA = float(
-    os.environ.get(
-        "A11_ENUM_LLL_DELTA",
-        "0.9995",
-    )
-)
-
-ENUM_GH_FACTOR = float(
-    os.environ.get(
-        "A11_ENUM_GH_FACTOR",
-        "1.03",
-    )
-)
-
-ENUM_TARGET_POT_DROP_PER_DIM = float(
-    os.environ.get(
-        "A11_ENUM_TARGET_POT_DROP_PER_DIM",
-        "0.0008",
-    )
-)
-
-ENUM_TARGET_FIRST_GSO_LOG_DROP = float(
-    os.environ.get(
-        "A11_ENUM_TARGET_FIRST_GSO_LOG_DROP",
-        "0.0015",
-    )
-)
-
-ENUM_MIN_ROUND_POT_DROP_PER_DIM = float(
-    os.environ.get(
-        "A11_ENUM_MIN_ROUND_POT_DROP_PER_DIM",
-        "0.000005",
-    )
-)
-
-_NATIVE_REDUCTION_DEFAULTS = {
-    "LATTICE_SIEVE_MAX_SECONDS": SIEVE_TIME_BUDGET_S,
-    "LATTICE_SIEVE_MAX_VECTORS": SIEVE_MAX_VECTORS,
-    "LATTICE_SIEVE_VECTOR_MULTIPLIER": SIEVE_VECTOR_MULTIPLIER,
-    "LATTICE_SIEVE_DH_TARGET_61_79": SIEVE_DH_TARGET_61_79,
-    "LATTICE_SIEVE_DH_TARGET_80_94": SIEVE_DH_TARGET_80_94,
-    "LATTICE_SIEVE_DH_TARGET_95": SIEVE_DH_TARGET_95,
-    "LATTICE_SIEVE_INSERT_ETA": SIEVE_INSERT_ETA,
-    "LATTICE_SIEVE_RECOVERY_RESERVE_SECONDS": (
-        SIEVE_RECOVERY_RESERVE_SECONDS
-    ),
-    "LATTICE_ENUM_MAX_ROUNDS": ENUM_MAX_ROUNDS,
-    "LATTICE_ENUM_LLL_DELTA": ENUM_LLL_DELTA,
-    "LATTICE_ENUM_GH_FACTOR": ENUM_GH_FACTOR,
-    "LATTICE_ENUM_TARGET_POT_DROP_PER_DIM": (
-        ENUM_TARGET_POT_DROP_PER_DIM
-    ),
-    "LATTICE_ENUM_TARGET_FIRST_GSO_LOG_DROP": (
-        ENUM_TARGET_FIRST_GSO_LOG_DROP
-    ),
-    "LATTICE_ENUM_MIN_ROUND_POT_DROP_PER_DIM": (
-        ENUM_MIN_ROUND_POT_DROP_PER_DIM
-    ),
-}
-
-for _native_name, _native_value in _NATIVE_REDUCTION_DEFAULTS.items():
-    os.environ.setdefault(
-        _native_name,
-        str(_native_value),
-    )
-# A11_STRICT_NATIVE_DEFAULTS_END
 
 
 # ============================================================
@@ -483,4 +435,4 @@ TRAIN_EVERY = 4
 LOG_EVERY = 4000
 SAVE_EVERY = 8000
 
-GOAL_THRESHOLD = 0.80
+GOAL_THRESHOLD = 0.85

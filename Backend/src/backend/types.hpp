@@ -60,9 +60,9 @@ struct EnumerationBudget {
     int max_rounds = 3;
     double lll_delta = 0.9995;
     double gh_factor = 1.03;
-    double target_potential_drop_per_dimension = 8.0e-4;
-    double target_first_gso_log_drop = 1.5e-3;
-    double min_round_potential_drop_per_dimension = 5.0e-6;
+    double target_potential_drop_per_dimension = 5.0e-4;
+    double target_first_gso_log_drop = 1.0e-3;
+    double min_round_potential_drop_per_dimension = 1.0e-5;
 };
 
 struct SieveBudget {
@@ -70,6 +70,10 @@ struct SieveBudget {
     int max_csd = 175;
     int max_bgj_calls = 1;
     double max_wall_seconds = 210.0;
+    double bgj_max_seconds = 185.0;
+    double no_solution_seconds = 90.0;
+    double no_progress_seconds = 60.0;
+    double report_seconds = 10.0;
     bool progressive = false;
     bool enable_dual_hash = true;
     bool cleanup_workdir = true;
@@ -96,6 +100,11 @@ struct ReduceResult {
     int dimension_for_free = 0;
     int bgj_calls = 0;
     long long database_vectors = 0;
+    long long sieve_batches = 0;
+    long long sieve_solution_vectors = 0;
+    int sieve_best_score = 0;
+    double sieve_elapsed_seconds = 0.0;
+    double sieve_idle_seconds = 0.0;
     double time_ms = 0.0;
 };
 

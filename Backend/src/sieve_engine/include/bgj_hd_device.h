@@ -493,8 +493,10 @@ struct buc_iterator_t {
 
 struct Bucketer_t {
     typedef buc_traits_t traits;
-    static constexpr int32_t flag_final = 0x1;
-    static constexpr int32_t flag_stuck = 0x2;
+    static constexpr int32_t flag_final       = 0x1;
+    static constexpr int32_t flag_stuck       = 0x2;
+    static constexpr int32_t flag_timeout     = 0x4;
+    static constexpr int32_t flag_no_progress = 0x8;
 
     static constexpr long   bucketer_default_num_threads    = BUC_DEFAULT_NUM_THREADS;
     static constexpr double bgj_default_saturation_radius   = BGJ_DEFAULT_SATURATION_RADIUS;
@@ -545,7 +547,7 @@ struct Bucketer_t {
     int _batch(int tid, int replace_th, int batch0);
     int _update_goal();
     int _sieve_is_over();
-    int _signal_buc_done();
+    int _signal_buc_done(bool immediate = false);
     int _signal_new_buc_ready();
     int _num_ready_buckets();
        
@@ -662,6 +664,10 @@ struct Reducer_t {
     pthread_spinlock_t stuck_stat_lock;
 };
 
+inline double bgj_safe_div(double numerator, double denominator) {
+    return denominator != 0.0 ? numerator / denominator : 0.0;
+}
+
 inline void ull_2_str(char *dst, uint64_t num) {
     if  (num < 10000ULL) sprintf(dst, "%d", (int) num);
     else if (num < 1000000ULL) sprintf(dst, "%.2fK", num * 1e-3);
@@ -701,14 +707,14 @@ inline void buc_logger_t::report(const char *keyfunc) {
                     (ev_curr_cpu.ru_utime.tv_usec - ev_init_cpu.ru_utime.tv_usec) * 1e-6 + 
                     (ev_curr_cpu.ru_stime.tv_sec - ev_init_cpu.ru_stime.tv_sec) + 
                     (ev_curr_cpu.ru_stime.tv_usec - ev_init_cpu.ru_stime.tv_usec) * 1e-6;
-    double avg_load = cpu / elapsed;
+    double avg_load = bgj_safe_div(cpu, elapsed);
 
     int curr_bk0    = bucketer->_num_ready_buckets();
     int bk0         = ev_bk0_num.load();
     int batch       = ev_batch_num.load();
-    float batch_avg = ev_batch_us.load() * 1e-6 / (float) batch;
-    float bw_i      = ev_ld_chunks.load() * (float) chunk_nbytes * 1e-9 / elapsed;
-    float bw_o      = ev_st_chunks.load() * (float) chunk_nbytes * 1e-9 / elapsed;
+    float batch_avg = bgj_safe_div(ev_batch_us.load() * 1e-6, batch);
+    float bw_i      = bgj_safe_div(ev_ld_chunks.load() * (float) chunk_nbytes * 1e-9, elapsed);
+    float bw_o      = bgj_safe_div(ev_st_chunks.load() * (float) chunk_nbytes * 1e-9, elapsed);
     char w_str[16], i_str[16], r_str[16];
     ull_2_str(w_str, ev_wasted_num.load());
     ull_2_str(i_str, ev_inserted_num.load());
@@ -718,14 +724,14 @@ inline void buc_logger_t::report(const char *keyfunc) {
     float h2d      = ev_h2d_us.load() * 1e-6;
     float d2h      = ev_d2h_us.load() * 1e-6;
     float kernel   = ev_kernel_us.load() * 1e-6;
-    float h2d_bw   = ev_h2d_nbytes.load() / elapsed * 1e-9;
-    float d2h_bw   = ev_d2h_nbytes.load() / elapsed * 1e-9;
-    float k_bw     = ev_kernel_vmmas * (float)(512.0 * CSD16) * 1e-12 / elapsed;
-    float h2d_tbw  = ev_h2d_nbytes.load() / h2d * 1e-9;
-    float d2h_tbw  = ev_d2h_nbytes.load() / d2h * 1e-9;
-    float k_tbw    = ev_kernel_vmmas * (float)(512.0 * CSD16) * 1e-12 / kernel;
+    float h2d_bw   = bgj_safe_div(ev_h2d_nbytes.load(), elapsed) * 1e-9;
+    float d2h_bw   = bgj_safe_div(ev_d2h_nbytes.load(), elapsed) * 1e-9;
+    float k_bw     = bgj_safe_div(ev_kernel_vmmas * (float)(512.0 * CSD16) * 1e-12, elapsed);
+    float h2d_tbw  = bgj_safe_div(ev_h2d_nbytes.load(), h2d) * 1e-9;
+    float d2h_tbw  = bgj_safe_div(ev_d2h_nbytes.load(), d2h) * 1e-9;
+    float k_tbw    = bgj_safe_div(ev_kernel_vmmas * (float)(512.0 * CSD16) * 1e-12, kernel);
 
-    float improve_ratio = ev_new_score_sum.load() / (double) ev_old_score_sum.load();
+    float improve_ratio = bgj_safe_div(ev_new_score_sum.load(), ev_old_score_sum.load());
 
     this->info("#bk0 %d(curr: %d), #batch %d(avg: %.2fs), elapsed %.3fs, cpu: %.3fs(avg: %.2f), #thread %d #device %d, bw: %.2f/%.2f GB/s, w %s, i %s, r %s(%.4f)",
                 bk0, curr_bk0, batch, batch_avg, elapsed, cpu, avg_load, num_threads, num_devices, bw_i, bw_o, w_str, i_str, r_str, improve_ratio);
@@ -738,17 +744,17 @@ inline void buc_logger_t::report(const char *keyfunc) {
         ull_2_str(bwc_fr, this->bucketer->_bwc->ev_f4r.load());
         ull_2_str(swc_fw, this->bucketer->_swc->ev_f4w.load());
         ull_2_str(swc_fr, this->bucketer->_swc->ev_f4r.load());
-        float pwc_h = this->bucketer->_pwc->ev_pwc_cache_hit.load() / (float) this->bucketer->_pwc->ev_pwc_fetch.load();
-        float bwc_hw = this->bucketer->_bwc->ev_f4w_hit.load() / (float) this->bucketer->_bwc->ev_f4w.load();
-        float bwc_hr = this->bucketer->_bwc->ev_f4r_hit.load() / (float) this->bucketer->_bwc->ev_f4r.load();
-        float swc_hw = this->bucketer->_swc->ev_f4w_hit.load() / (float) this->bucketer->_swc->ev_f4w.load();
-        float swc_hr = this->bucketer->_swc->ev_f4r_hit.load() / (float) this->bucketer->_swc->ev_f4r.load();
-        float pwc_i = this->bucketer->_pwc->ev_ssd_ld.load() * (float) chunk_nbytes * 1e-9 / elapsed;
-        float pwc_o = this->bucketer->_pwc->ev_ssd_st.load() * (float) chunk_nbytes * 1e-9 / elapsed;
-        float bwc_i = this->bucketer->_bwc->ev_ssd_ld.load() * (float) chunk_nbytes * 1e-9 / elapsed;
-        float bwc_o = this->bucketer->_bwc->ev_ssd_st.load() * (float) chunk_nbytes * 1e-9 / elapsed;
-        float swc_i = this->bucketer->_swc->ev_ssd_ld.load() * (float) chunk_nbytes * 1e-9 / elapsed;
-        float swc_o = this->bucketer->_swc->ev_ssd_st.load() * (float) chunk_nbytes * 1e-9 / elapsed;
+        float pwc_h = bgj_safe_div(this->bucketer->_pwc->ev_pwc_cache_hit.load(), this->bucketer->_pwc->ev_pwc_fetch.load());
+        float bwc_hw = bgj_safe_div(this->bucketer->_bwc->ev_f4w_hit.load(), this->bucketer->_bwc->ev_f4w.load());
+        float bwc_hr = bgj_safe_div(this->bucketer->_bwc->ev_f4r_hit.load(), this->bucketer->_bwc->ev_f4r.load());
+        float swc_hw = bgj_safe_div(this->bucketer->_swc->ev_f4w_hit.load(), this->bucketer->_swc->ev_f4w.load());
+        float swc_hr = bgj_safe_div(this->bucketer->_swc->ev_f4r_hit.load(), this->bucketer->_swc->ev_f4r.load());
+        float pwc_i = bgj_safe_div(this->bucketer->_pwc->ev_ssd_ld.load() * (float) chunk_nbytes * 1e-9, elapsed);
+        float pwc_o = bgj_safe_div(this->bucketer->_pwc->ev_ssd_st.load() * (float) chunk_nbytes * 1e-9, elapsed);
+        float bwc_i = bgj_safe_div(this->bucketer->_bwc->ev_ssd_ld.load() * (float) chunk_nbytes * 1e-9, elapsed);
+        float bwc_o = bgj_safe_div(this->bucketer->_bwc->ev_ssd_st.load() * (float) chunk_nbytes * 1e-9, elapsed);
+        float swc_i = bgj_safe_div(this->bucketer->_swc->ev_ssd_ld.load() * (float) chunk_nbytes * 1e-9, elapsed);
+        float swc_o = bgj_safe_div(this->bucketer->_swc->ev_ssd_st.load() * (float) chunk_nbytes * 1e-9, elapsed);
         this->info("pwc (f %s(%.3f)|I %.2f|O %.2f), bwc (fw %s(%.4f)|fr %s(%.3f)|I %.2f|O %.2f), swc(fw %s(%.3f)|fr %s(%.3f)|I %.2f|O %.2f)", 
                     pwc_f, pwc_h, pwc_i, pwc_o, bwc_fw, bwc_hw, bwc_fr, bwc_hr, bwc_i, bwc_o, swc_fw, swc_hw, swc_fr, swc_hr, swc_i, swc_o);
     }
@@ -766,7 +772,7 @@ inline void red_logger_t::report(const char *key_func) {
                     (ev_curr_cpu.ru_utime.tv_usec - ev_init_cpu.ru_utime.tv_usec) * 1e-6 + 
                     (ev_curr_cpu.ru_stime.tv_sec - ev_init_cpu.ru_stime.tv_sec) + 
                     (ev_curr_cpu.ru_stime.tv_usec - ev_init_cpu.ru_stime.tv_usec) * 1e-6;
-    double avg_load = cpu / elapsed;
+    double avg_load = bgj_safe_div(cpu, elapsed);
 
     float pg;
     {   
@@ -777,67 +783,67 @@ inline void red_logger_t::report(const char *key_func) {
         for (int i = goal_score; i > 0; i--) {
             real_num += reducer->_pool->score_stat[i];
         }
-        pg = real_num / (float) goal_num * 100.f;
+        pg = bgj_safe_div(real_num, goal_num) * 100.f;
     }
     
     char r_str[16], rr_str[16], f_str[16], u_str[16];
     ull_2_str(r_str, ev_red_ssum.load());
-    ull_2_str(rr_str, (uint64_t)(ev_red_vmmas * 256.0 / ev_red_ssum.load()));
+    ull_2_str(rr_str, (uint64_t)bgj_safe_div(ev_red_vmmas * 256.0, ev_red_ssum.load()));
     ull_2_str(f_str, ev_flt_ssum.load());
     ull_2_str(u_str, ev_total_notin_ptr[0]);
-    float f_r = ev_red_ssum.load() / (float) ev_flt_ssum.load();
-    float u_r = ev_total_check_ptr[0] / (float) ev_total_notin_ptr[0];
+    float f_r = bgj_safe_div(ev_red_ssum.load(), ev_flt_ssum.load());
+    float u_r = bgj_safe_div(ev_total_check_ptr[0], ev_total_notin_ptr[0]);
 
     float ld_stall  = ev_ld_stall_us.load() * 1e-6;
-    float bw_i      = ev_ld_chunks.load() * (float) chunk_nbytes * 1e-9 / elapsed;
-    float bw_o      = ev_st_chunks.load() * (float) chunk_nbytes * 1e-9 / elapsed;
+    float bw_i      = bgj_safe_div(ev_ld_chunks.load() * (float) chunk_nbytes * 1e-9, elapsed);
+    float bw_o      = bgj_safe_div(ev_st_chunks.load() * (float) chunk_nbytes * 1e-9, elapsed);
     float h2d       = ev_h2d_us.load() * 1e-6;
     float d2h       = ev_d2h_us.load() * 1e-6;
     float upk       = strategy >= 1 ? ev_bk1_us.load() * 1e-6 : ev_upk_us.load() * 1e-6;
-    float h2d_bw    = ev_h2d_nbytes.load() / elapsed * 1e-9;
-    float d2h_bw    = ev_d2h_nbytes.load() / elapsed * 1e-9;
+    float h2d_bw    = bgj_safe_div(ev_h2d_nbytes.load(), elapsed) * 1e-9;
+    float d2h_bw    = bgj_safe_div(ev_d2h_nbytes.load(), elapsed) * 1e-9;
     float upkcount  = strategy >= 4 ? .0f : CSD16 * (float) ev_bk0_ssum.load();
-    float upk_bw    = upkcount / elapsed * 1e-9;
-    float h2d_tbw   = ev_h2d_nbytes.load() / h2d * 1e-9;
-    float d2h_tbw   = ev_d2h_nbytes.load() / d2h * 1e-9;
-    float upk_tbw   = upkcount / upk * 1e-9;
+    float upk_bw    = bgj_safe_div(upkcount, elapsed) * 1e-9;
+    float h2d_tbw   = bgj_safe_div(ev_h2d_nbytes.load(), h2d) * 1e-9;
+    float d2h_tbw   = bgj_safe_div(ev_d2h_nbytes.load(), d2h) * 1e-9;
+    float upk_tbw   = bgj_safe_div(upkcount, upk) * 1e-9;
     float dup_ratio = ev_red_usum.load() / (double) (ev_red_ssum.load() + 1e-9);
     float collect   = ev_collect_us.load() * 1e-6;
     
     float fff       = ev_fff_us.load() * 1e-6;
     float fff_count = (float) ev_red_ssum.load();
-    double fff_bw   = fff_count / elapsed * 1e-6;
-    double fff_tbw  = fff_count / fff * 1e-6;
+    double fff_bw   = bgj_safe_div(fff_count, elapsed) * 1e-6;
+    double fff_tbw  = bgj_safe_div(fff_count, fff) * 1e-6;
 
     char bk0_n[16], bk0_v[16], bk0_m[16], bk1_n[16], bk1_v[16], bk1_m[16], bk2_n[16], bk2_v[16], bk2_m[16], bk3_n[16], bk3_v[16], bk3_m[16], red_mr[16], red_mf[16], red_ar[16];
     ull_2_str(bk0_n, ev_bk0_num.load());
-    ull_2_str(bk0_v, ev_bk0_ssum.load() / (double) ev_bk0_num.load());
+    ull_2_str(bk0_v, (uint64_t)bgj_safe_div(ev_bk0_ssum.load(), ev_bk0_num.load()));
     ull_2_str(bk0_m, ev_bk0_max.load());
     ull_2_str(bk1_n, ev_bk1_num.load());
-    ull_2_str(bk1_v, ev_bk1_ssum.load() / (double) ev_bk1_num.load());
+    ull_2_str(bk1_v, (uint64_t)bgj_safe_div(ev_bk1_ssum.load(), ev_bk1_num.load()));
     ull_2_str(bk1_m, ev_bk1_max.load());
     ull_2_str(bk2_n, ev_bk2_num.load());
-    ull_2_str(bk2_v, ev_bk2_ssum.load() / (double) ev_bk2_num.load());
+    ull_2_str(bk2_v, (uint64_t)bgj_safe_div(ev_bk2_ssum.load(), ev_bk2_num.load()));
     ull_2_str(bk2_m, ev_bk2_max.load());
     ull_2_str(bk3_n, ev_bk3_num.load());
-    ull_2_str(bk3_v, ev_bk3_ssum.load() / (double) ev_bk3_num.load());
+    ull_2_str(bk3_v, (uint64_t)bgj_safe_div(ev_bk3_ssum.load(), ev_bk3_num.load()));
     ull_2_str(bk3_m, ev_bk3_max.load());
     ull_2_str(red_mr, ev_red_max.load());
     ull_2_str(red_mf, ev_flt_max.load());
-    ull_2_str(red_ar, ev_red_msum.load() / (double) ev_flt_num.load());
+    ull_2_str(red_ar, (uint64_t)bgj_safe_div(ev_red_msum.load(), ev_flt_num.load()));
 
     float bk1 = ev_bk1_us.load() * 1e-6;
     float bk2 = ev_bk2_us.load() * 1e-6;
     float bk3 = ev_bk3_us.load() * 1e-6;
     float red = ev_red_us.load() * 1e-6;
-    float bk1_bw = ev_bk1_vmmas.load() * (float)(512.0 * CSD16) * 1e-12  / elapsed;
-    float bk2_bw = ev_bk2_vmmas.load() * (float)(512.0 * CSD16) * 1e-12  / elapsed;
-    float bk3_bw = ev_bk3_vmmas.load() * (float)(512.0 * CSD16) * 1e-12  / elapsed;
-    float red_bw = ev_red_vmmas.load() * (float)(512.0 * CSD16) * 1e-12 / elapsed;
-    float bk1_tbw = ev_bk1_vmmas.load() * (float)(512.0 * CSD16) * 1e-12 / bk1;
-    float bk2_tbw = ev_bk2_vmmas.load() * (float)(512.0 * CSD16) * 1e-12 / bk2;
-    float bk3_tbw = ev_bk3_vmmas.load() * (float)(512.0 * CSD16) * 1e-12 / bk3;
-    float red_tbw = ev_red_vmmas.load() * (float)(512.0 * CSD16) * 1e-12 / red;
+    float bk1_bw = bgj_safe_div(ev_bk1_vmmas.load() * (float)(512.0 * CSD16) * 1e-12, elapsed);
+    float bk2_bw = bgj_safe_div(ev_bk2_vmmas.load() * (float)(512.0 * CSD16) * 1e-12, elapsed);
+    float bk3_bw = bgj_safe_div(ev_bk3_vmmas.load() * (float)(512.0 * CSD16) * 1e-12, elapsed);
+    float red_bw = bgj_safe_div(ev_red_vmmas.load() * (float)(512.0 * CSD16) * 1e-12, elapsed);
+    float bk1_tbw = bgj_safe_div(ev_bk1_vmmas.load() * (float)(512.0 * CSD16) * 1e-12, bk1);
+    float bk2_tbw = bgj_safe_div(ev_bk2_vmmas.load() * (float)(512.0 * CSD16) * 1e-12, bk2);
+    float bk3_tbw = bgj_safe_div(ev_bk3_vmmas.load() * (float)(512.0 * CSD16) * 1e-12, bk3);
+    float red_tbw = bgj_safe_div(ev_red_vmmas.load() * (float)(512.0 * CSD16) * 1e-12, red);
 
     this->info("|%.2f%|g %d|r %s(%s)|f %s(%.2f)|u %s(%.2f)|, elapsed %.3fs, cpu: %.3fs(avg: %.2f), #thread %d #device %d",
                 pg, *ev_goal_score_ptr, r_str, rr_str, f_str, f_r, u_str, u_r, elapsed, cpu, avg_load, num_threads, num_devices);

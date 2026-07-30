@@ -18,6 +18,11 @@ struct SieveRunInfo {
     int dimension_for_free = 0;
     int bgj_calls = 0;
     long long vectors = 0;
+    long long batches = 0;
+    long long solution_vectors = 0;
+    int best_score = 0;
+    double elapsed_seconds = 0.0;
+    double idle_seconds = 0.0;
 };
 
 SieveBudget sieve_budget_from_environment();
