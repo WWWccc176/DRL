@@ -32,7 +32,7 @@ long bgj_environment_long(const char* name, long fallback,
     return std::max(minimum, std::min(maximum, value));
 }
 
-int bgj_best_score(const Pool_hd_t* pool) {
+int compute_bgj_best_score(const Pool_hd_t* pool) {
     for (int score = 1; score < 65535; ++score) {
         if (pool->score_stat[score] != 0) return score;
     }
@@ -55,14 +55,14 @@ const char* bgj_stop_name(int code) {
 
 int Pool_hd_t::_bgj_Sieve_hd(int bgj) {
     const long pool_vectors = pwc_manager ? pwc_manager->num_vec() : 0;
-    const int initial_best_score = bgj_best_score(this);
+    const int initial_best_score = compute_bgj_best_score(this);
     if (pool_vectors <= 0 || initial_best_score == 65535) {
         bgj_stop_code = Pool_hd_t::bgj_stop_stuck;
         bgj_elapsed_seconds = 0.0;
         bgj_idle_seconds = 0.0;
         bgj_batches = 0;
         bgj_solution_vectors = 0;
-        bgj_best_score = initial_best_score;
+        this->bgj_best_score = initial_best_score;
         lg_err("refusing BGJ start with an empty or invalid pool: vectors=%ld, best=%d",
                pool_vectors, initial_best_score);
         return -1;
@@ -1504,7 +1504,7 @@ int Bucketer_t::run() {
     _pool->bgj_idle_seconds = 0.0;
     _pool->bgj_batches = 0;
     _pool->bgj_solution_vectors = 0;
-    _pool->bgj_best_score = bgj_best_score(_pool);
+    _pool->bgj_best_score = compute_bgj_best_score(_pool);
 
     const auto started = std::chrono::steady_clock::now();
 
@@ -1538,7 +1538,7 @@ int Bucketer_t::run() {
 
     auto last_best_improvement = started;
     auto last_report = started;
-    int best_score = bgj_best_score(_pool);
+    int best_score = compute_bgj_best_score(_pool);
     const int initial_best_score = best_score;
     long max_solution_vectors = _swc->ready_nvecs_estimate();
     long batch_count = 0;
@@ -1654,7 +1654,7 @@ int Bucketer_t::run() {
         max_solution_vectors = std::max(
             max_solution_vectors, _swc->ready_nvecs_estimate());
 
-        const int current_best_score = bgj_best_score(_pool);
+        const int current_best_score = compute_bgj_best_score(_pool);
         if (current_best_score < best_score) {
             best_score = current_best_score;
             last_best_improvement = now;
