@@ -54,6 +54,20 @@ const char* bgj_stop_name(int code) {
 
 
 int Pool_hd_t::_bgj_Sieve_hd(int bgj) {
+    const long pool_vectors = pwc_manager ? pwc_manager->num_vec() : 0;
+    const int initial_best_score = bgj_best_score(this);
+    if (pool_vectors <= 0 || initial_best_score == 65535) {
+        bgj_stop_code = Pool_hd_t::bgj_stop_stuck;
+        bgj_elapsed_seconds = 0.0;
+        bgj_idle_seconds = 0.0;
+        bgj_batches = 0;
+        bgj_solution_vectors = 0;
+        bgj_best_score = initial_best_score;
+        lg_err("refusing BGJ start with an empty or invalid pool: vectors=%ld, best=%d",
+               pool_vectors, initial_best_score);
+        return -1;
+    }
+
     if (pwc_manager->max_cached_chunks() > pwc_manager_t::pwc_default_max_cached_chunks) {
         pwc_manager->wait_work();
         pwc_manager->set_max_cached_chunks(pwc_manager_t::pwc_default_max_cached_chunks);

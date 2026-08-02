@@ -175,6 +175,7 @@ SieveRunInfo run_local_extreme_sieve(Matrix& block, int64_t matrix_id,
                                      int global_pos,
                                      const SieveBudget& budget) {
     SieveRunInfo info;
+    const auto started = std::chrono::steady_clock::now();
     const int dimension = block.get_rows();
     const int cols = block.get_cols();
     if (dimension < 40 || dimension > kMaximumActionBeta || cols < dimension) {
@@ -193,7 +194,6 @@ SieveRunInfo run_local_extreme_sieve(Matrix& block, int64_t matrix_id,
     const Matrix original = block;
     const fs::path work_directory =
         make_work_directory(original, matrix_id, global_pos);
-    const auto started = std::chrono::steady_clock::now();
     WorkDirectoryCleanup cleanup(work_directory, budget.cleanup_workdir);
 
     try {
@@ -228,12 +228,42 @@ SieveRunInfo run_local_extreme_sieve(Matrix& block, int64_t matrix_id,
                 "LATTICE_SIEVE_THREADS",
                 std::max(4U, std::min(32U, default_threads)), 1, 256));
             pool.set_num_threads(requested_threads);
-            pool.sampling(target_database_size(pool.CSD, budget));
 
-            const double bgj_stage_seconds =
+            const long requested_vectors =
+                target_database_size(pool.CSD, budget);
+            const int sampling_status = pool.sampling(requested_vectors);
+            const long sampled_vectors =
+                pool.pwc_manager ? pool.pwc_manager->num_vec() : 0;
+
+            info.vectors = sampled_vectors;
+            info.elapsed_seconds = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - started).count();
+
+            if (sampling_status != 0 || sampled_vectors <= 0) {
+                info.stop_reason = StopReason::sieve_failed;
+                std::ostringstream error;
+                error << "BGJ sampling failed before the sieve stage"
+                      << " (status=" << sampling_status
+                      << ", vectors=" << sampled_vectors
+                      << ", requested=" << requested_vectors << ')';
+                info.error = error.str();
+                return info;
+            }
+
+            const double total_budget_seconds =
                 budget.max_wall_seconds > 0.0
                     ? budget.max_wall_seconds
                     : budget.bgj_max_seconds;
+            const double bgj_stage_seconds = std::max(
+                0.0, total_budget_seconds - info.elapsed_seconds);
+
+            if (bgj_stage_seconds < 1.0) {
+                info.stop_reason = StopReason::budget_exhausted;
+                info.error =
+                    "BGJ action budget was exhausted during initialization/sampling";
+                return info;
+            }
+
             const std::string bgj_max_seconds =
                 std::to_string(bgj_stage_seconds);
             const std::string report_seconds =

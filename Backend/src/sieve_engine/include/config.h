@@ -197,7 +197,7 @@ struct hw {
 #define DH_MIN_BATCH                    256
 #define DHB_DEFAULT_NUM_THREADS         24
 #define DHR_DEFAULT_NUM_THREADS         32
-#define DHB_GRAM_SLIMIT                 (1ULL << 30)
+#define DHB_GRAM_SLIMIT                 (3ULL << 30)
 #define DHR_GRAM_SLIMIT                 (22ULL << 30)
 #define DH_BSIZE_RATIO                  (ESD <= 40 ? 30.0 : 50.0)
 #define DH_REPORT_DURATION              1800

@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import json
+import math
 import os
 import time
 
 from .action_space import build_action_list
-from .config import AGENT_VERSION, DETAIL_EVERY_CYCLES
+from .config import (
+    AGENT_VERSION,
+    DETAIL_EVERY_CYCLES,
+    ENVS_PER_FILE,
+    SIEVE_MAX_ROUNDS,
+)
 from .results import (
     append_training_log,
     plot_training_history,
@@ -56,6 +63,103 @@ def train_all(
     interrupted = False
     pending: set[int] = set()
 
+    progress_path = os.path.join(results_dir, "progress.json")
+    progress_events_path = os.path.join(results_dir, "progress.log")
+
+    restored_completed_runs = dict(
+        (resume_extra or {}).get("completed_runs", {})
+    )
+    completed_runs = {
+        str(key): int(value)
+        for key, value in restored_completed_runs.items()
+    }
+    prior_cycles_unattributed = int(
+        (resume_extra or {}).get(
+            "prior_cycles_unattributed",
+            cycles_completed if not restored_completed_runs else 0,
+        )
+    )
+    active_progress: dict[int, dict] = {}
+
+    def pair_key(dim: int, seed_id: int) -> str:
+        return f"{int(dim)}:{int(seed_id)}"
+
+    def max_steps_for_dim(dim: int) -> int:
+        return math.ceil((int(dim) + 3) * int(dim) / 8)
+
+    def next_run_index(dim: int, seed_id: int, exclude_env: int | None = None) -> int:
+        key = pair_key(dim, seed_id)
+        active_count = sum(
+            1
+            for env_id, entry in active_progress.items()
+            if env_id != exclude_env
+            and pair_key(entry["dim"], entry["seed_id"]) == key
+        )
+        return int(completed_runs.get(key, 0)) + active_count + 1
+
+    def append_progress_event(event: str, **fields):
+        record = {
+            "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "event": event,
+            **fields,
+        }
+        with open(progress_events_path, "a", encoding="utf-8") as stream:
+            stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+
+    def write_progress_snapshot(reason: str):
+        active_by_pair: dict[str, list[dict]] = {}
+        for env_id, entry in active_progress.items():
+            key = pair_key(entry["dim"], entry["seed_id"])
+            active_by_pair.setdefault(key, []).append(
+                {
+                    "env_id": int(env_id),
+                    "run_index": int(entry["run_index"]),
+                    "step": int(entry["step"]),
+                    "next_step": int(entry.get("next_step", entry["step"])),
+                    "max_steps": int(entry["max_steps"]),
+                    "state": str(entry["state"]),
+                    "action_idx": entry.get("action_idx"),
+                }
+            )
+
+        pairs = {}
+        for dim, seed_id in vec_env.dataset_pairs:
+            key = pair_key(dim, seed_id)
+            pairs[key] = {
+                "dim": int(dim),
+                "seed_id": int(seed_id),
+                "assigned_env_copies": int(ENVS_PER_FILE),
+                "completed_episodes": int(completed_runs.get(key, 0)),
+                "steps_per_episode": int(max_steps_for_dim(dim)),
+                "sieve_rounds_per_sieve_action": int(SIEVE_MAX_ROUNDS),
+                "active": sorted(
+                    active_by_pair.get(key, []),
+                    key=lambda item: item["env_id"],
+                ),
+            }
+
+        payload = {
+            "updated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "reason": reason,
+            "updates": int(updates),
+            "env_steps": int(env_steps),
+            "cycles_completed": int(cycles_completed),
+            "prior_cycles_unattributed": int(prior_cycles_unattributed),
+            "dimension_range": [
+                int(min(dataset_dims)),
+                int(max(dataset_dims)),
+            ],
+            "dataset_pair_count": int(total_seeds),
+            "assigned_env_copies_per_file": int(ENVS_PER_FILE),
+            "pairs": pairs,
+        }
+
+        temporary = progress_path + ".tmp"
+        with open(temporary, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, ensure_ascii=False, indent=2, sort_keys=True)
+            stream.write("\n")
+        os.replace(temporary, progress_path)
+
     def checkpoint_extra():
         return {
             "updates": updates,
@@ -64,9 +168,13 @@ def train_all(
             "global_best": global_best,
             "global_info": global_info,
             "history": history,
+            "completed_runs": completed_runs,
+            "active_progress": active_progress,
+            "prior_cycles_unattributed": prior_cycles_unattributed,
         }
 
     def save_checkpoint(reason: str):
+        write_progress_snapshot(f"checkpoint:{reason}")
         path = os.path.join(results_dir, f"{AGENT_VERSION}.pth")
         agent.save(path, extra=checkpoint_extra())
         append_training_log(
@@ -129,6 +237,24 @@ def train_all(
     try:
         states = vec_env.reset_all()
         state_by_eid = {env_id: states[env_id] for env_id in range(num_envs)}
+
+        for env_id in range(num_envs):
+            dim = int(vec_env.env_dims[env_id])
+            seed_id = int(vec_env.env_seed_ids[env_id])
+            key = pair_key(dim, seed_id)
+            active_progress[env_id] = {
+                "dim": dim,
+                "seed_id": seed_id,
+                "run_index": next_run_index(dim, seed_id, exclude_env=env_id),
+                "step": 0,
+                "next_step": 1,
+                "max_steps": max_steps_for_dim(dim),
+                "state": "ready",
+                "action_idx": None,
+            }
+
+        write_progress_snapshot("startup")
+
         prev_s = [None] * num_envs
         prev_a = [None] * num_envs
 
@@ -139,6 +265,22 @@ def train_all(
         for env_id in range(num_envs):
             prev_s[env_id] = states[env_id]
             prev_a[env_id] = initial_actions[env_id]
+            entry = active_progress[env_id]
+            entry["state"] = "in_flight"
+            entry["next_step"] = 1
+            entry["action_idx"] = int(initial_actions[env_id])
+            append_progress_event(
+                "dispatch",
+                env_id=env_id,
+                dim=entry["dim"],
+                seed_id=entry["seed_id"],
+                run_index=entry["run_index"],
+                step=entry["next_step"],
+                max_steps=entry["max_steps"],
+                assigned_env_copies=ENVS_PER_FILE,
+                sieve_rounds=SIEVE_MAX_ROUNDS,
+                action_idx=entry["action_idx"],
+            )
             vec_env.send_one(
                 env_id,
                 initial_actions[env_id],
@@ -157,9 +299,29 @@ def train_all(
             detail_cycles = []
 
             for env_id in ready:
-                old_dim = vec_env.env_dims[env_id]
+                old_dim = int(vec_env.env_dims[env_id])
+                old_seed_id = int(vec_env.env_seed_ids[env_id])
+                old_key = pair_key(old_dim, old_seed_id)
                 obs, reward, done, info = vec_env.recv_one(env_id)
                 pending.discard(env_id)
+
+                entry = active_progress[env_id]
+                entry["step"] = int(info.get("step", entry["next_step"]))
+                entry["next_step"] = entry["step"]
+                entry["state"] = "episode_complete" if done else "ready"
+                append_progress_event(
+                    "result",
+                    env_id=env_id,
+                    dim=old_dim,
+                    seed_id=old_seed_id,
+                    run_index=entry["run_index"],
+                    step=entry["step"],
+                    max_steps=entry["max_steps"],
+                    done=bool(done),
+                    assigned_env_copies=ENVS_PER_FILE,
+                    sieve_rounds=SIEVE_MAX_ROUNDS,
+                    action_idx=entry.get("action_idx"),
+                )
 
                 best_update = info.pop("best_update", None)
                 if best_update is not None:
@@ -177,11 +339,37 @@ def train_all(
 
                 if done:
                     cycles_completed += 1
+                    completed_runs[old_key] = int(completed_runs.get(old_key, 0)) + 1
+                    append_progress_event(
+                        "episode_complete",
+                        env_id=env_id,
+                        dim=old_dim,
+                        seed_id=old_seed_id,
+                        completed_episodes=completed_runs[old_key],
+                        assigned_env_copies=ENVS_PER_FILE,
+                        steps_per_episode=entry["max_steps"],
+                        sieve_rounds=SIEVE_MAX_ROUNDS,
+                    )
                     if cycles_completed % DETAIL_EVERY_CYCLES == 0:
                         detail_cycles.append(cycles_completed)
+
                     next_state = vec_env.rotate_one(env_id)
                     states[env_id] = next_state
                     newly[env_id] = next_state
+
+                    next_dim = int(vec_env.env_dims[env_id])
+                    next_seed_id = int(vec_env.env_seed_ids[env_id])
+                    active_progress[env_id] = {
+                        "dim": next_dim,
+                        "seed_id": next_seed_id,
+                        "run_index": next_run_index(next_dim, next_seed_id, exclude_env=env_id),
+                        "step": 0,
+                        "next_step": 1,
+                        "max_steps": max_steps_for_dim(next_dim),
+                        "state": "ready",
+                        "action_idx": None,
+                    }
+                    write_progress_snapshot("episode_complete")
                 else:
                     states[env_id] = obs
                     newly[env_id] = obs
@@ -205,6 +393,27 @@ def train_all(
             for env_id in newly:
                 prev_s[env_id] = states[env_id]
                 prev_a[env_id] = actions[env_id]
+
+                entry = active_progress[env_id]
+                entry["state"] = "in_flight"
+                entry["next_step"] = min(
+                    entry["step"] + 1,
+                    entry["max_steps"],
+                )
+                entry["action_idx"] = int(actions[env_id])
+                append_progress_event(
+                    "dispatch",
+                    env_id=env_id,
+                    dim=entry["dim"],
+                    seed_id=entry["seed_id"],
+                    run_index=entry["run_index"],
+                    step=entry["next_step"],
+                    max_steps=entry["max_steps"],
+                    assigned_env_copies=ENVS_PER_FILE,
+                    sieve_rounds=SIEVE_MAX_ROUNDS,
+                    action_idx=entry["action_idx"],
+                )
+
                 vec_env.send_one(
                     env_id,
                     actions[env_id],
@@ -230,6 +439,7 @@ def train_all(
                     f"reached {reached}/{total_seeds} | "
                     f"{rate:.0f} env-steps/s"
                 )
+                write_progress_snapshot("periodic_status")
 
             if env_steps % save_every < len(ready):
                 save_checkpoint("periodic")
