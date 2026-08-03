@@ -13,19 +13,26 @@ from .config import (
 )
 
 
-def _set_common_thread_env(omp_threads: int) -> None:
+def _set_common_thread_env(
+    omp_threads: int,
+    *,
+    bind_threads: bool,
+) -> None:
     os.environ["OMP_NUM_THREADS"] = str(max(1, int(omp_threads)))
     os.environ["OMP_DYNAMIC"] = "FALSE"
-    os.environ["OMP_PROC_BIND"] = "close"
-    os.environ["OMP_PLACES"] = "threads"
+
+    if bind_threads:
+        os.environ["OMP_PROC_BIND"] = "close"
+        os.environ["OMP_PLACES"] = "threads"
+    else:
+        os.environ["OMP_PROC_BIND"] = "FALSE"
+        os.environ.pop("OMP_PLACES", None)
+
     os.environ["OMP_WAIT_POLICY"] = "PASSIVE"
     os.environ["KMP_BLOCKTIME"] = "0"
 
-    # Limit glibc arena proliferation across 48 long-lived worker processes.
-    # The main process sets this before spawn, so workers inherit it at startup.
     os.environ.setdefault("MALLOC_ARENA_MAX", "2")
 
-    # Keep nested BLAS pools from multiplying the 48 environment processes.
     os.environ["MKL_NUM_THREADS"] = "1"
     os.environ["MKL_DYNAMIC"] = "FALSE"
     os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -53,6 +60,32 @@ def _parse_cpu_list(text: str) -> set[int]:
     return cpus
 
 
+def _available_cpus() -> set[int]:
+    configured = os.environ.get("A11_CPU_POOL", "").strip()
+    if configured:
+        parsed = _parse_cpu_list(configured)
+        if parsed:
+            return parsed
+
+    try:
+        return set(os.sched_getaffinity(0))
+    except Exception:
+        return set(range(os.cpu_count() or 1))
+
+
+def _format_cpu_list(cpus: set[int] | tuple[int, ...]) -> str:
+    return ",".join(str(cpu) for cpu in sorted(set(cpus)))
+
+
+def _cpu_utilization_target() -> float:
+    raw = os.environ.get("A11_CPU_UTILIZATION", "0.85")
+    try:
+        value = float(raw)
+    except ValueError:
+        value = 0.85
+    return max(0.10, min(1.0, value))
+
+
 def physical_core_affinity_groups() -> list[tuple[int, ...]]:
     """Return one logical-CPU sibling group per physical core.
 
@@ -60,10 +93,7 @@ def physical_core_affinity_groups() -> list[tuple[int, ...]]:
     before using the other. On the target 2x24-core HT system this yields 48 groups,
     normally two logical CPUs per group.
     """
-    try:
-        allowed = set(os.sched_getaffinity(0))
-    except Exception:
-        allowed = set(range(os.cpu_count() or 1))
+    allowed = _available_cpus()
 
     topology = Path("/sys/devices/system/cpu")
     by_socket: dict[int, dict[int, set[int]]] = {}
@@ -129,18 +159,76 @@ def bind_env_cpu_affinity(env_id: int) -> tuple[int, ...]:
 
 
 def configure_main_runtime() -> None:
-    _set_common_thread_env(MAIN_CPU_THREADS)
+    os.environ.pop("A11_CPU_POOL", None)
+
+    groups = physical_core_affinity_groups()
+    if not groups:
+        raise RuntimeError("No usable CPU affinity groups were detected")
+
+    utilization = _cpu_utilization_target()
+    target_group_count = max(
+        1,
+        min(
+            len(groups),
+            round(len(groups) * utilization),
+        ),
+    )
+
+    selected_groups = groups[:target_group_count]
+    cpu_pool = {
+        cpu
+        for group in selected_groups
+        for cpu in group
+    }
+
+    os.environ["A11_CPU_POOL"] = _format_cpu_list(cpu_pool)
+
+    try:
+        os.sched_setaffinity(0, cpu_pool)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to set A11 main CPU affinity to {sorted(cpu_pool)}"
+        ) from exc
+
+    _set_common_thread_env(
+        MAIN_CPU_THREADS,
+        bind_threads=False,
+    )
+
+    all_logical = sum(len(group) for group in groups)
+
+    print(
+        "A11 CPU pool:",
+        f"{len(cpu_pool)}/{all_logical} logical CPUs",
+        f"{target_group_count}/{len(groups)} physical cores",
+        f"target={utilization:.1%}",
+        flush=True,
+    )
+
     if PROJECT_ROOT not in sys.path:
         sys.path.insert(0, PROJECT_ROOT)
 
 
 def configure_env_runtime(env_id: int) -> tuple[int, ...]:
-    # CUDA_VISIBLE_DEVICES is set by workers.py before this function is called.
-    # The backend therefore sees exactly one assigned GPU as logical cuda:0.
-    _set_common_thread_env(ENV_CPU_THREADS)
+    cpu_pool = _available_cpus()
+
+    try:
+        os.sched_setaffinity(0, cpu_pool)
+    except Exception as exc:
+        raise RuntimeError(
+            f"env{env_id} failed to restore A11 CPU pool"
+        ) from exc
+
+    _set_common_thread_env(
+        ENV_CPU_THREADS,
+        bind_threads=True,
+    )
+
     cpus = bind_env_cpu_affinity(env_id)
+
     if PROJECT_ROOT not in sys.path:
         sys.path.insert(0, PROJECT_ROOT)
+
     return cpus
 
 
