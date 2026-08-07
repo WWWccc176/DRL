@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 
 namespace {
@@ -36,22 +37,46 @@ int sanitize_gpu_output_count(int value, long limit, const char* stage,
                               int tid, int sid = -1) {
     if (value < 0) {
         if (sid >= 0) {
-            lg_err("thread %d | %d, %s returned invalid negative #out %d; discarding", 
-                   tid, sid, stage, value);
+            std::fprintf(
+                stderr,
+                "sanitize_gpu_output_count: thread %d | %d, %s returned invalid negative #out %d; discarding\\n",
+                tid,
+                sid,
+                stage,
+                value
+            );
         } else {
-            lg_err("thread %d, %s returned invalid negative #out %d; discarding", 
-                   tid, stage, value);
+            std::fprintf(
+                stderr,
+                "sanitize_gpu_output_count: thread %d, %s returned invalid negative #out %d; discarding\\n",
+                tid,
+                stage,
+                value
+            );
         }
         return 0;
     }
 
     if ((long)value > limit) {
         if (sid >= 0) {
-            lg_warn("thread %d | %d, %s #out %d overflow(%ld); truncating", 
-                    tid, sid, stage, value, limit);
+            std::fprintf(
+                stderr,
+                "sanitize_gpu_output_count: thread %d | %d, %s #out %d overflow(%ld); truncating\\n",
+                tid,
+                sid,
+                stage,
+                value,
+                limit
+            );
         } else {
-            lg_warn("thread %d, %s #out %d overflow(%ld); truncating", 
-                    tid, stage, value, limit);
+            std::fprintf(
+                stderr,
+                "sanitize_gpu_output_count: thread %d, %s #out %d overflow(%ld); truncating\\n",
+                tid,
+                stage,
+                value,
+                limit
+            );
         }
         return (int)limit;
     }

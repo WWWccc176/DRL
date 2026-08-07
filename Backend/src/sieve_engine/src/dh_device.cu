@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <thread>
 
@@ -21,9 +22,9 @@ static inline long ceil256(long n) {
 static inline int checked_dhr_output_count(
     int value, long limit, int tid, long bias) {
     if (value < 0) {
-        lg_err(
-            "thread %d, bias %ld, invalid negative #out %d; "
-            "discarding this reduction batch",
+        std::fprintf(
+            stderr,
+            "checked_dhr_output_count: thread %d, bias %ld, invalid negative #out %d; discarding this reduction batch\\n",
             tid,
             bias,
             value
@@ -32,8 +33,9 @@ static inline int checked_dhr_output_count(
     }
 
     if ((long)value > limit) {
-        lg_warn(
-            "thread %d, bias %ld, #out %d overflow(%ld); truncating",
+        std::fprintf(
+            stderr,
+            "checked_dhr_output_count: thread %d, bias %ld, #out %d overflow(%ld); truncating\\n",
             tid,
             bias,
             value,
