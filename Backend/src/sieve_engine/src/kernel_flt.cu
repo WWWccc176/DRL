@@ -2,6 +2,28 @@
 #include "../include/pool_hd_device.h"
 #include "../include/bgj_hd_device.h"
 
+static __device__ __forceinline__ int _reserve_output_slots(
+    int *num_out, int requested, int out_max_size, int *granted) {
+    if (requested <= 0 || out_max_size <= 0) {
+        *granted = 0;
+        return 0;
+    }
+
+    int observed = atomicAdd(num_out, 0);
+    while (observed < out_max_size) {
+        const int take = min(requested, out_max_size - observed);
+        const int previous = atomicCAS(num_out, observed, observed + take);
+        if (previous == observed) {
+            *granted = take;
+            return observed;
+        }
+        observed = previous;
+    }
+
+    *granted = 0;
+    return out_max_size;
+}
+
 __device__ __forceinline__ void _fmma8x16x8(float *C, float *A, float *B) {
         __attribute__((aligned(16))) float A_col[16];
         __attribute__((aligned(16))) float B_col[16];
@@ -630,14 +652,13 @@ __global__ void filter_collect_sol(int8_t *vec_out, uint16_t *score_out, int32_t
 
         int num = *wacc_num;
         if (num >= batchVecs) {
-            int rnum = batchVecs;
-            int pos;
-            if (lid == 0) pos = atomicAdd(num_out, batchVecs);
-            pos = __shfl_sync(0xffffffff, pos, 0);
-            if (pos + rnum > out_max_size) {
-                rnum = out_max_size - pos;
-                if (rnum < 0) rnum = 0;
+            int rnum = 0;
+            int pos = 0;
+            if (lid == 0) {
+                pos = _reserve_output_slots(num_out, batchVecs, out_max_size, &rnum);
             }
+            pos = __shfl_sync(0xffffffff, pos, 0);
+            rnum = __shfl_sync(0xffffffff, rnum, 0);
 
             if (rnum == batchVecs) {
                 for (int i = 0; i < batchVecs; i++) {
@@ -683,7 +704,12 @@ __global__ void filter_collect_sol(int8_t *vec_out, uint16_t *score_out, int32_t
                 if (rnum + lid < num) wacc_score[lid] = s0;
                 if (rnum + lid + 32 < num) wacc_score[lid + 32] = s1;
             }
-            if (lid == 0) wacc_num[0] = max(0, num - rnum);
+            // A partial reservation means the global output buffer is full.
+            // Drop the unwriteable tail instead of repeatedly retrying it on
+            // every following input batch.
+            if (lid == 0) {
+                wacc_num[0] = rnum == batchVecs ? max(0, num - rnum) : 0;
+            }
         }
     
         ind += stride;
@@ -691,13 +717,13 @@ __global__ void filter_collect_sol(int8_t *vec_out, uint16_t *score_out, int32_t
 
     __syncwarp();
     int num = *wacc_num;
-    int pos;
-    if (lid == 0) pos = atomicAdd(num_out, num);
-    pos = __shfl_sync(0xffffffff, pos, 0);
-    if (pos + num > out_max_size) {
-        num = out_max_size - pos;
-        if (num < 0) num = 0;
+    int pos = 0;
+    int granted = 0;
+    if (lid == 0) {
+        pos = _reserve_output_slots(num_out, num, out_max_size, &granted);
     }
+    pos = __shfl_sync(0xffffffff, pos, 0);
+    num = __shfl_sync(0xffffffff, granted, 0);
 
     for (int i = 0; i < num; i++) {
         int idx = wacc[i];

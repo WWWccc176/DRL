@@ -521,7 +521,7 @@ class LatticeBackend:
     def final_polish(
         self,
         matrix_id: int,
-        beta: int = 45,
+        beta: int = 50,
     ) -> dict[str, Any]:
         output = self._run_gpu_sieve(
             matrix_id=matrix_id,

@@ -4,6 +4,11 @@
 #include "../include/dh_device.h"
 #include "../include/utils.h"
 
+#include <algorithm>
+#include <chrono>
+#include <cstdlib>
+#include <thread>
+
 float dot_avx2(float *src1, float *src2, long n);
 double dot_avx2(double *src1, double *src2, long n);
 void red_avx2(float *dst, float *src, float q, long n);
@@ -11,6 +16,43 @@ void copy_avx2(float *dst, float *src, long n);
 
 static inline long ceil256(long n) {
     return ((n + 255L) / 256L) * 256L;
+}
+
+static inline int checked_dhr_output_count(
+    int value, long limit, int tid, long bias) {
+    if (value < 0) {
+        lg_err(
+            "thread %d, bias %ld, invalid negative #out %d; "
+            "discarding this reduction batch",
+            tid,
+            bias,
+            value
+        );
+        return 0;
+    }
+
+    if ((long)value > limit) {
+        lg_warn(
+            "thread %d, bias %ld, #out %d overflow(%ld); truncating",
+            tid,
+            bias,
+            value,
+            limit
+        );
+        return (int)limit;
+    }
+
+    return value;
+}
+
+static inline double dh_report_seconds() {
+    const char *raw = std::getenv("LATTICE_SIEVE_REPORT_SECONDS");
+    if (!raw || !raw[0]) return 10.0;
+
+    char *end = nullptr;
+    const double parsed = std::strtod(raw, &end);
+    if (end == raw || parsed <= 0.0) return 10.0;
+    return std::min(3600.0, std::max(1.0, parsed));
 }
 
 
@@ -1173,15 +1215,11 @@ int dhr_buffer_t::run(int tid) {
         CHECK_CUDA_ERR(cudaEventRecord(logger->dhr_stop[tid], streams[tid]));
         #endif
 
-        CHECK_CUDA_ERR(cudaStreamSynchronize(streams[tid]));
-        
         /// check overflow
-        int h_num_out;
+        int h_num_out = 0;
         CHECK_CUDA_ERR(cudaMemcpyAsync(&h_num_out, d_num_out[tid], sizeof(int), cudaMemcpyDeviceToHost, streams[tid]));
-        if (h_num_out > out_max_size) {
-            lg_warn("thread %d, bias %ld, #out %d overflow(%d)", tid, bias, h_num_out, out_max_size);
-        }
-        h_num_out = h_num_out < out_max_size ? h_num_out : out_max_size;
+        CHECK_CUDA_ERR(cudaStreamSynchronize(streams[tid]));
+        h_num_out = checked_dhr_output_count(h_num_out, out_max_size, tid, bias);
 
         /// call mlf kernel
         #if ENABLE_PROFILING
@@ -1349,13 +1387,10 @@ int dhr_buffer_t::run(int tid) {
 }
 
 int dhr_buffer_t::out(int tid) {
-    int h_num_out;
+    int h_num_out = 0;
     CHECK_CUDA_ERR(cudaMemcpyAsync(&h_num_out, d_num_out[tid], sizeof(int), cudaMemcpyDeviceToHost, streams[tid]));
     CHECK_CUDA_ERR(cudaStreamSynchronize(streams[tid]));
-    if (h_num_out > out_max_size) {
-        lg_warn("thread %d, #out %d overflow(%d)", tid, h_num_out, out_max_size);
-    }
-    h_num_out = h_num_out < out_max_size ? h_num_out : out_max_size;
+    h_num_out = checked_dhr_output_count(h_num_out, out_max_size, tid, 0);
     CHECK_CUDA_ERR(cudaMemsetAsync(d_num_out[tid], 0, sizeof(int), streams[tid]));
 
     #if ENABLE_PROFILING
@@ -1600,6 +1635,9 @@ int dh_bucketer_t::run(double max_time) {
     gettimeofday(&start, NULL);
 
     uint64_t total_generated = 0;
+    uint64_t completed_batches = 0;
+    const double report_interval = dh_report_seconds();
+    auto last_progress_report = std::chrono::steady_clock::now();
 
     /// initialize device data
     if (_buc_buf) delete _buc_buf;
@@ -1634,31 +1672,48 @@ int dh_bucketer_t::run(double max_time) {
 
     for (;;) {
         int batch = -1;
+        bool hard_timeout = false;
 
         std::unique_lock<std::mutex> dhb_lock(_dhb_mtx);
-        _dhb_cv.wait(dhb_lock, [&] {
+        for (;;) {
             long num_ready = _bwc->num_ready();
-            if (max_time != 0.0 && total_generated) {
+            if (max_time > 0.0) {
                 gettimeofday(&curr, NULL);
                 double elapsed = (curr.tv_sec - start.tv_sec) + (curr.tv_usec - start.tv_usec) * 1e-6;
-                double red_time = (curr.tv_sec - first_batch_done.tv_sec) + (curr.tv_usec - first_batch_done.tv_usec) * 1e-6;
-                if (elapsed > 0.7 * max_time) {
+                if (elapsed >= max_time) {
+                    hard_timeout = true;
+                    break;
+                }
+
+                if (total_generated && elapsed > 0.7 * max_time) {
+                    double red_time = (curr.tv_sec - first_batch_done.tv_sec) +
+                                      (curr.tv_usec - first_batch_done.tv_usec) * 1e-6;
                     double remain_time = max_time - elapsed;
-                    double expect_bucs = remain_time / red_time * (total_generated - num_ready);
-                    if (expect_bucs < 1.2 * num_ready) return true;
+                    const double reduced_bucs = std::max(0.0, (double)total_generated - (double)num_ready);
+                    if (red_time > 1e-6 && reduced_bucs > 0.0) {
+                        double expect_bucs = remain_time / red_time * reduced_bucs;
+                        if (expect_bucs < 1.2 * num_ready) break;
+                    }
                 }
             }
-            
-            if (_num_buc_slimit - num_ready < _min_batch) return false;
-            batch = traits::max_batch_under(_num_buc_slimit - num_ready);
-            if (batch > _max_batch) batch = _max_batch;
-            return true;
-        });
+
+            if (_num_buc_slimit - num_ready >= _min_batch) {
+                batch = traits::max_batch_under(_num_buc_slimit - num_ready);
+                if (batch > _max_batch) batch = _max_batch;
+                break;
+            }
+
+            // Wake periodically even if the reducer fails to notify.  Without
+            // this timed wait, max_time is never re-evaluated and the bucketer
+            // can remain blocked forever.
+            _dhb_cv.wait_for(dhb_lock, std::chrono::milliseconds(250));
+        }
         dhb_lock.unlock();
 
         if (batch == -1) {
             std::unique_lock<std::mutex> lock(_reducer->_dhr_mtx);
-            _reducer->flag = dh_reducer_t::flag_stop;
+            _reducer->flag = hard_timeout ?
+                dh_reducer_t::flag_stop_now : dh_reducer_t::flag_stop;
             _reducer->_dhr_cv.notify_all();
             break;
         }
@@ -1671,8 +1726,6 @@ int dh_bucketer_t::run(double max_time) {
         for (int i = 0; i < batch; i++) buc_id[i] = _bwc->push_bucket();
 
         _buc_buf->center_prep(batch);
-
-        lg_dbg("new batch (%d) started, current #buc: %ld / %ld", batch, _bwc->num_ready(), _num_buc_slimit);
 
         int rem_chunks = _pwc->num_chunks();
 
@@ -1777,6 +1830,7 @@ int dh_bucketer_t::run(double max_time) {
         logger->ev_total_bucket += batch;
         #endif
 
+        bool stop_after_batch = false;
         if (init_round) {
             int ESD8 = _buc_buf->ESD8;
             int *bres = (int *)malloc(ESD8 * (1024 + 4 + 4));
@@ -1795,9 +1849,26 @@ int dh_bucketer_t::run(double max_time) {
                 }
             }
 
-            while (!_reducer->device_inited) {}
+            while (!_reducer->device_inited.load(std::memory_order_acquire)) {
+                if (max_time > 0.0) {
+                    gettimeofday(&curr, NULL);
+                    const double elapsed = (curr.tv_sec - start.tv_sec) +
+                                           (curr.tv_usec - start.tv_usec) * 1e-6;
+                    if (elapsed >= max_time) {
+                        lg_warn("DH reducer device initialization exceeded %.1f seconds; stopping", max_time);
+                        {
+                            std::unique_lock<std::mutex> lock(_reducer->_dhr_mtx);
+                            _reducer->flag = dh_reducer_t::flag_stop_now;
+                            _reducer->_dhr_cv.notify_all();
+                        }
+                        stop_after_batch = true;
+                        break;
+                    }
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
 
-            {   
+            if (!stop_after_batch) {
                 int ESD = _reducer->_red_buf->ESD;
                 char tmp[4096];
                 int pp = 0;
@@ -1812,20 +1883,19 @@ int dh_bucketer_t::run(double max_time) {
                 lg_dbg("%s", tmp);
             }
 
-            for (int t = 0; t < _reducer->_num_threads; t++) {
-                int device_ptr = hw::gpu_ptr(t, _reducer->_num_threads);
-                CHECK_CUDA_ERR(cudaSetDevice(hw::gpu_id_list[device_ptr]));
-                CHECK_CUDA_ERR(cudaMemcpy(_reducer->_red_buf->local_data[t] + 1, bres, ESD8 * (1024 + 4 + 4), cudaMemcpyHostToDevice));
+            if (!stop_after_batch) {
+                for (int t = 0; t < _reducer->_num_threads; t++) {
+                    int device_ptr = hw::gpu_ptr(t, _reducer->_num_threads);
+                    CHECK_CUDA_ERR(cudaSetDevice(hw::gpu_id_list[device_ptr]));
+                    CHECK_CUDA_ERR(cudaMemcpy(_reducer->_red_buf->local_data[t] + 1, bres, ESD8 * (1024 + 4 + 4), cudaMemcpyHostToDevice));
+                }
             }
 
             free(bres);
             free(tres);
         }
         if (init_round) init_round = 0;
-        else _reducer->_red_buf->last_report.tv_sec -= DH_REPORT_DURATION;
 
-        lg_dbg("batch done, current #buc: %ld / %ld", _bwc->num_ready(), _num_buc_slimit);
-        
         for (int i = 0; i < batch; i++) _bwc->bucket_finalize(buc_id[i]);
 
         {
@@ -1835,6 +1905,28 @@ int dh_bucketer_t::run(double max_time) {
 
         if (!total_generated) gettimeofday(&first_batch_done, NULL);
         total_generated += batch;
+        completed_batches++;
+
+        const auto now = std::chrono::steady_clock::now();
+        const double since_report = std::chrono::duration<double>(
+            now - last_progress_report
+        ).count();
+        if (since_report >= report_interval) {
+            gettimeofday(&curr, NULL);
+            const double elapsed = (curr.tv_sec - start.tv_sec) +
+                                   (curr.tv_usec - start.tv_usec) * 1e-6;
+            lg_dbg(
+                "DH progress: batches=%lu, generated=%lu, current #buc: %ld / %ld, elapsed=%.1fs",
+                (unsigned long)completed_batches,
+                (unsigned long)total_generated,
+                _bwc->num_ready(),
+                _num_buc_slimit,
+                elapsed
+            );
+            last_progress_report = now;
+        }
+
+        if (stop_after_batch) break;
     }
 
     lg_dbg("no more bucket, waiting for reducer done");
@@ -1905,6 +1997,8 @@ int dh_reducer_t::auto_bgj_params_set() {
 }
 
 int dh_reducer_t::run(double target_length) {
+    device_inited.store(0, std::memory_order_relaxed);
+
     if (_red_buf) delete _red_buf;
     _red_buf = new dhr_buffer_t(this, target_length);
 
@@ -1914,7 +2008,7 @@ int dh_reducer_t::run(double target_length) {
     for (int tid = 0; tid < _num_threads; tid++) {
         _red_pool[tid]->wait_sleep();
     }
-    device_inited = 1;
+    device_inited.store(1, std::memory_order_release);
 
     #if ENABLE_PROFILING
     {

@@ -32,6 +32,33 @@ long bgj_environment_long(const char* name, long fallback,
     return std::max(minimum, std::min(maximum, value));
 }
 
+int sanitize_gpu_output_count(int value, long limit, const char* stage,
+                              int tid, int sid = -1) {
+    if (value < 0) {
+        if (sid >= 0) {
+            lg_err("thread %d | %d, %s returned invalid negative #out %d; discarding", 
+                   tid, sid, stage, value);
+        } else {
+            lg_err("thread %d, %s returned invalid negative #out %d; discarding", 
+                   tid, stage, value);
+        }
+        return 0;
+    }
+
+    if ((long)value > limit) {
+        if (sid >= 0) {
+            lg_warn("thread %d | %d, %s #out %d overflow(%ld); truncating", 
+                    tid, sid, stage, value, limit);
+        } else {
+            lg_warn("thread %d, %s #out %d overflow(%ld); truncating", 
+                    tid, stage, value, limit);
+        }
+        return (int)limit;
+    }
+
+    return value;
+}
+
 int compute_bgj_best_score(const Pool_hd_t* pool) {
     for (int score = 1; score < 65535; ++score) {
         if (pool->score_stat[score] != 0) return score;
@@ -3012,8 +3039,10 @@ int red_buffer_holder_t::bgjs_out(int tid, int *size, int8_t **h_vec, int32_t **
     CHECK_CUDA_ERR(cudaEventElapsedTime(&ret_tt, logger->red_start[tid], logger->red_stop[tid]));
     logger->ev_red_us += 1000.f * ret_tt;
     #endif
-    if ((int)h_num_flt_out[tid][0] < 0) lg_err("thread %d, num_red_out overflow(%d), ignored", tid, h_num_flt_out[tid][0]);    
-    int to_flt = h_num_flt_out[tid][0] < out_max_size ? h_num_flt_out[tid][0] : out_max_size;
+    h_num_flt_out[tid][0] = sanitize_gpu_output_count(
+        (int)h_num_flt_out[tid][0], out_max_size, "RED", tid
+    );
+    int to_flt = h_num_flt_out[tid][0];
     #if ENABLE_PROFILING
     logger->ev_flt_num += 1;
     logger->ev_red_msum += h_num_flt_out[tid][0];
@@ -3046,7 +3075,9 @@ int red_buffer_holder_t::bgjs_out(int tid, int *size, int8_t **h_vec, int32_t **
     CHECK_CUDA_ERR(cudaEventRecord(logger->d2h_start[tid], streams[tid]));
     #endif
 
-    h_num_flt_out[tid][0] = h_num_flt_out[tid][0] < flt_out_max_size ? h_num_flt_out[tid][0] : flt_out_max_size;
+    h_num_flt_out[tid][0] = sanitize_gpu_output_count(
+        (int)h_num_flt_out[tid][0], flt_out_max_size, "FLT", tid
+    );
     CHECK_CUDA_ERR(cudaMemcpyAsync(h_norm_out[tid], d_norm_out[tid], h_num_flt_out[tid][0] * sizeof(int32_t), cudaMemcpyDeviceToHost, streams[tid]));
     CHECK_CUDA_ERR(cudaMemcpyAsync(h_score_out[tid], d_score_out[tid], h_num_flt_out[tid][0] * sizeof(uint16_t), cudaMemcpyDeviceToHost, streams[tid]));
     CHECK_CUDA_ERR(cudaMemcpyAsync(h_u_out[tid], d_u_out[tid], h_num_flt_out[tid][0] * sizeof(uint64_t), cudaMemcpyDeviceToHost, streams[tid]));
@@ -3228,8 +3259,10 @@ int red_buffer_holder_t::bgjm_out(int tid, int sid, int *size, int8_t **h_vec, i
     CHECK_CUDA_ERR(cudaMemsetAsync(d_num_red_out[id], 0, sizeof(int), sstreams[id]));
     CHECK_CUDA_ERR(cudaMemsetAsync(d_num_flt_out[id], 0, sizeof(int), sstreams[id]));
     CHECK_CUDA_ERR(cudaStreamSynchronize(sstreams[id]));
-    if ((int)h_num_flt_out[id][0] < 0) lg_err("thread %d | %d, num_red_out overflow(%d), ignored", tid, sid, h_num_flt_out[id][0]);
-    int to_flt = h_num_flt_out[id][0] < out_max_size ? h_num_flt_out[id][0] : out_max_size;
+    h_num_flt_out[id][0] = sanitize_gpu_output_count(
+        (int)h_num_flt_out[id][0], out_max_size, "MRED", tid, sid
+    );
+    int to_flt = h_num_flt_out[id][0];
     #if ENABLE_PROFILING
     logger->ev_flt_num += 1;
     logger->ev_red_msum += h_num_flt_out[id][0];
@@ -3260,7 +3293,9 @@ int red_buffer_holder_t::bgjm_out(int tid, int sid, int *size, int8_t **h_vec, i
     logger->ev_flt_ssum += std::min((long)h_num_flt_out[id][0], flt_out_max_size);
     CHECK_CUDA_ERR(cudaEventRecord(logger->d2h_start[id], sstreams[id]));
     #endif
-    h_num_flt_out[id][0] = h_num_flt_out[id][0] < flt_out_max_size ? h_num_flt_out[id][0] : flt_out_max_size;
+    h_num_flt_out[id][0] = sanitize_gpu_output_count(
+        (int)h_num_flt_out[id][0], flt_out_max_size, "FLT", tid, sid
+    );
 
     CHECK_CUDA_ERR(cudaMemcpyAsync(h_norm_out[id], d_norm_out[id], h_num_flt_out[id][0] * sizeof(int32_t), cudaMemcpyDeviceToHost, sstreams[id]));
     CHECK_CUDA_ERR(cudaMemcpyAsync(h_score_out[id], d_score_out[id], h_num_flt_out[id][0] * sizeof(uint16_t), cudaMemcpyDeviceToHost, sstreams[id]));
@@ -3303,7 +3338,9 @@ int red_buffer_holder_t::bgjl_out(int tid, int sid, int *size, int8_t **h_vec, i
     logger->ev_flt_max = std::max((int)logger->ev_flt_max.load(), h_num_flt_out[id][0]);
     logger->ev_flt_ssum += std::min((long)h_num_flt_out[id][0], flt_out_max_size);
     #endif
-    h_num_flt_out[id][0] = h_num_flt_out[id][0] < flt_out_max_size ? h_num_flt_out[id][0] : flt_out_max_size;
+    h_num_flt_out[id][0] = sanitize_gpu_output_count(
+        (int)h_num_flt_out[id][0], flt_out_max_size, "FLT", tid, sid
+    );
     #if ENABLE_PROFILING
     CHECK_CUDA_ERR(cudaEventRecord(logger->d2h_start[id], sstreams[id]));
     #endif
@@ -3612,8 +3649,10 @@ int red_buffer_holder_t::bgj3l_run(int tid, int sid) {
     CHECK_CUDA_ERR(cudaMemsetAsync(d_num_red_out[id], 0, sizeof(int), sstreams[id]));
 
     CHECK_CUDA_ERR(cudaStreamSynchronize(sstreams[id]));
-    if ((int)h_num_flt_out[id][0] < 0) lg_err("thread %d | %d, num_red_out overflow(%d), ignored", tid, sid, h_num_flt_out[id][0]);
-    int to_flt = h_num_flt_out[id][0] < out_max_size ? h_num_flt_out[id][0] : out_max_size;
+    h_num_flt_out[id][0] = sanitize_gpu_output_count(
+        (int)h_num_flt_out[id][0], out_max_size, "BGJ3L RED", tid, sid
+    );
+    int to_flt = h_num_flt_out[id][0];
     #if ENABLE_PROFILING
     #if BGJL_HOST_UPK
     float bk2_tt;
@@ -3785,8 +3824,10 @@ int red_buffer_holder_t::bgj4_run(int tid, int sid) {
         logger->ev_red_vmmas += bgj4_repeat * batch2 * ceil(bk3_size[i] / 16.0) * ceil(bk3_size[i] / 16.0 + 1) * 0.5;
     }
     #endif
-    if ((int)h_num_flt_out[id][0] < 0) lg_err("thread %d | %d, num_red_out overflow(%d), ignored", tid, sid, h_num_flt_out[id][0]);
-    int to_flt = h_num_flt_out[id][0] < out_max_size ? h_num_flt_out[id][0] : out_max_size;
+    h_num_flt_out[id][0] = sanitize_gpu_output_count(
+        (int)h_num_flt_out[id][0], out_max_size, "BGJ4 RED", tid, sid
+    );
+    int to_flt = h_num_flt_out[id][0];
     #if ENABLE_PROFILING
     logger->ev_flt_num += 1;
     logger->ev_red_msum += h_num_flt_out[id][0];

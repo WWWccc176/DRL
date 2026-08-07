@@ -5,6 +5,8 @@
 #include "bgj_hd.h"
 #include "pool_hd_device.h"
 
+#include <atomic>
+
 struct dh_reducer_t;
 struct dh_bucketer_t;
 
@@ -459,7 +461,7 @@ struct dh_reducer_t {
 
     /// runtime data
     volatile int32_t flag = 0;
-    volatile int32_t device_inited = 0;
+    std::atomic<int32_t> device_inited{0};
 
     /// runtime functions
 

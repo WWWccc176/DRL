@@ -70,7 +70,7 @@ ENVS_PER_FILE = 2
 STATE_PHASE_PERIOD = 3
 
 INITIAL_BKZ_BETA = 20
-FINAL_POLISH_BETA = 45
+FINAL_POLISH_BETA = 50
 
 DETAIL_EVERY_CYCLES = 10
 
@@ -300,6 +300,51 @@ SIEVE_RESPONSE_POLL_SECONDS = float(
     os.environ.get(
         "A11_SIEVE_RESPONSE_POLL_SECONDS",
         "5.0",
+    )
+)
+
+# IPC waits are bounded independently of the cooperative native budget.  The
+# additional grace covers native cleanup, exact block recovery and queueing,
+# while still guaranteeing that a dead or wedged GPU worker cannot freeze the
+# trainer forever.
+SIEVE_REQUEST_PUT_TIMEOUT_S = float(
+    os.environ.get(
+        "A11_SIEVE_REQUEST_PUT_TIMEOUT_S",
+        "10.0",
+    )
+)
+
+SIEVE_RESPONSE_TIMEOUT_S = float(
+    os.environ.get(
+        "A11_SIEVE_RESPONSE_TIMEOUT_S",
+        str(max(90.0, SIEVE_TIME_BUDGET_S + 90.0)),
+    )
+)
+
+# A request can legitimately wait behind the other environments assigned to
+# the same persistent GPU.  This queue bound therefore scales with the actual
+# 48-env / 4-GPU topology, while execution gets the much tighter bound above
+# once the GPU worker acknowledges that native processing has started.
+_SIEVE_ENVS_PER_GPU = (
+    ENV_COUNT + max(1, len(GPU_IDS)) - 1
+) // max(1, len(GPU_IDS))
+
+SIEVE_QUEUE_WAIT_TIMEOUT_S = float(
+    os.environ.get(
+        "A11_SIEVE_QUEUE_WAIT_TIMEOUT_S",
+        str(
+            max(
+                300.0,
+                _SIEVE_ENVS_PER_GPU * (SIEVE_TIME_BUDGET_S + 90.0),
+            )
+        ),
+    )
+)
+
+SIEVE_RESPONSE_PUT_TIMEOUT_S = float(
+    os.environ.get(
+        "A11_SIEVE_RESPONSE_PUT_TIMEOUT_S",
+        "2.0",
     )
 )
 

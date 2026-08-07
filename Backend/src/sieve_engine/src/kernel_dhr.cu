@@ -39,19 +39,46 @@ static __device__ __forceinline__ void _pfch_64vec(int *dst, int *src, int tid) 
     utils_t::_commit_async_group();
 }
 
+// Reserve output entries without ever allowing the global counter to grow
+// beyond the physical output buffer.  The original atomicAdd kept counting
+// discarded entries after the buffer was full and could eventually wrap the
+// signed 32-bit counter into a negative value.
+static __device__ __forceinline__ int _reserve_output_slots(
+    int *num_out, int requested, int out_max_size, int *granted) {
+    if (requested <= 0 || out_max_size <= 0) {
+        *granted = 0;
+        return 0;
+    }
+
+    int observed = atomicAdd(num_out, 0);
+    while (observed < out_max_size) {
+        const int take = min(requested, out_max_size - observed);
+        const int previous = atomicCAS(num_out, observed, observed + take);
+        if (previous == observed) {
+            *granted = take;
+            return observed;
+        }
+        observed = previous;
+    }
+
+    *granted = 0;
+    return out_max_size;
+}
+
 static __device__ __forceinline__ void _sbuc_2_gbuc(int *out, int *num_out, int out_max_size, 
                                                     int *sbuc,  int *sbuc_num, int wid, int lid) {
     __syncwarp();
     
     int b_size = sbuc_num[wid];
     if (b_size > sbuc_size / 2) b_size = sbuc_size / 2;
-    int pos;
+    int pos = 0;
+    int granted = 0;
     if (lid == 0) {
-        pos = atomicAdd(num_out, b_size);
+        pos = _reserve_output_slots(num_out, b_size, out_max_size, &granted);
         sbuc_num[wid] = 0;
     }
     pos = __shfl_sync(0xffffffff, pos, 0);
-    b_size = min(b_size, out_max_size - pos);
+    b_size = __shfl_sync(0xffffffff, granted, 0);
 
     int *wsbuc = sbuc + wid * sbuc_size;
     if (lid < b_size) ((int2 *)out)[pos + lid] = ((int2 *)wsbuc)[lid];

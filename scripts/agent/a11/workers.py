@@ -9,7 +9,7 @@ import time
 import traceback
 from collections import deque
 from pathlib import Path
-from queue import Empty
+from queue import Empty, Full
 from typing import Any
 
 from .config import (
@@ -29,8 +29,12 @@ from .config import (
     SIEVE_MAX_PAIRS,
     SIEVE_MAX_ROUNDS,
     SIEVE_MEMORY_BUDGET_MB,
+    SIEVE_QUEUE_WAIT_TIMEOUT_S,
     SIEVE_QUEUE_SIZE,
     SIEVE_RESPONSE_POLL_SECONDS,
+    SIEVE_REQUEST_PUT_TIMEOUT_S,
+    SIEVE_RESPONSE_PUT_TIMEOUT_S,
+    SIEVE_RESPONSE_TIMEOUT_S,
     SIEVE_SERVICE_CLOSE_SECONDS,
     SIEVE_TIME_BUDGET_S,
     SIEVE_WORKDIR,
@@ -97,7 +101,19 @@ class SieveClient:
             },
         }
 
-        self.request_queue.put(request)
+        try:
+            self.request_queue.put(
+                request,
+                timeout=max(0.1, SIEVE_REQUEST_PUT_TIMEOUT_S),
+            )
+        except Full as exc:
+            raise RuntimeError(
+                f"GPU{self.gpu_id} sieve request queue remained full for "
+                f"{SIEVE_REQUEST_PUT_TIMEOUT_S:.1f}s"
+            ) from exc
+
+        deadline = time.monotonic() + max(1.0, SIEVE_QUEUE_WAIT_TIMEOUT_S)
+        execution_started = False
 
         while True:
             try:
@@ -108,8 +124,18 @@ class SieveClient:
                     )
                 )
             except Empty:
-                # A beta=95 sieve may legitimately run for a long time.
-                # The parent shutdown path can still terminate this env process.
+                if time.monotonic() >= deadline:
+                    phase = "execution" if execution_started else "queue wait"
+                    limit = (
+                        SIEVE_RESPONSE_TIMEOUT_S
+                        if execution_started
+                        else SIEVE_QUEUE_WAIT_TIMEOUT_S
+                    )
+                    raise TimeoutError(
+                        f"GPU{self.gpu_id} persistent sieve {phase} timed out "
+                        f"after {limit:.1f}s "
+                        f"(env_id={self.env_id}, task_id={task_id}, beta={beta})"
+                    )
                 continue
 
             received_task_id = int(
@@ -119,6 +145,11 @@ class SieveClient:
                 )
             )
 
+            if received_task_id < task_id:
+                # A delayed response from an already-aborted request must not
+                # poison the next request on this environment queue.
+                continue
+
             if received_task_id != task_id:
                 raise RuntimeError(
                     "Persistent sieve response mismatch:\n"
@@ -127,6 +158,14 @@ class SieveClient:
                     f"  expected = {task_id}\n"
                     f"  received = {received_task_id}"
                 )
+
+            if response.get("status") == "started":
+                execution_started = True
+                deadline = time.monotonic() + max(
+                    1.0,
+                    SIEVE_RESPONSE_TIMEOUT_S,
+                )
+                continue
 
             if not bool(
                 response.get(
@@ -294,6 +333,22 @@ def _sieve_worker_main(
             "ok": False,
         }
 
+        # Acknowledge dequeue before entering the native call.  This separates
+        # legitimate queueing behind the other envs on this GPU from a native
+        # execution that has actually wedged.
+        try:
+            response_queues[env_id].put(
+                {
+                    "task_id": task_id,
+                    "worker_pid": os.getpid(),
+                    "status": "started",
+                    "ok": False,
+                },
+                timeout=max(0.1, SIEVE_RESPONSE_PUT_TIMEOUT_S),
+            )
+        except Exception:
+            pass
+
         try:
             budget = dict(
                 task.get(
@@ -370,7 +425,10 @@ def _sieve_worker_main(
             response["traceback"] = traceback.format_exc()
 
         try:
-            response_queues[env_id].put(response)
+            response_queues[env_id].put(
+                response,
+                timeout=max(0.1, SIEVE_RESPONSE_PUT_TIMEOUT_S),
+            )
         except Exception:
             # The environment may have been terminated during shutdown.
             pass
@@ -429,7 +487,7 @@ class PersistentSieveService:
 
         for gpu_id in self.gpu_ids:
             try:
-                self.request_queues[gpu_id].put(
+                self.request_queues[gpu_id].put_nowait(
                     {
                         "cmd": "close",
                     }
@@ -483,6 +541,26 @@ class PersistentSieveService:
                 queue.close()
             except Exception:
                 pass
+
+    def assert_healthy(self):
+        if self._closed:
+            return
+
+        failed = [
+            process
+            for process in self.processes
+            if not process.is_alive() and process.exitcode is not None
+        ]
+        if not failed:
+            return
+
+        details = "\n".join(
+            f"  {process.name}: pid={process.pid}, exitcode={process.exitcode}"
+            for process in failed
+        )
+        raise RuntimeError(
+            "Persistent GPU sieve worker exited unexpectedly:\n" + details
+        )
 
 
 # ============================================================
@@ -886,7 +964,23 @@ class SubprocVecEnv:
         self,
         env_ids,
     ):
-        return [env_id for env_id in env_ids if self.remotes[env_id].poll(timeout=0)]
+        self.sieve_service.assert_healthy()
+
+        ready = []
+        for env_id in env_ids:
+            if self.remotes[env_id].poll(timeout=0):
+                ready.append(env_id)
+                continue
+
+            process = self.processes[env_id]
+            if not process.is_alive() and process.exitcode is not None:
+                raise RuntimeError(
+                    "Environment worker exited without returning a result:\n"
+                    f"  env_id={env_id}, pid={process.pid}, "
+                    f"exitcode={process.exitcode}, file={self.files[env_id]}"
+                )
+
+        return ready
 
     def get_bests(self):
         for remote in self.remotes:
