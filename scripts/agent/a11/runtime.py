@@ -133,7 +133,7 @@ def physical_core_affinity_groups() -> list[tuple[int, ...]]:
     for i in range(max_len):
         for groups in socket_groups:
             if i < len(groups):
-                interleaved.append(groups)
+                interleaved.append(groups[i])
 
     # Deduplicate in case unusual topology exposes overlapping sibling lists.
     seen: set[tuple[int, ...]] = set()
@@ -175,11 +175,7 @@ def configure_main_runtime() -> None:
     )
 
     selected_groups = groups[:target_group_count]
-    cpu_pool = {
-        cpu
-        for group in selected_groups
-        for cpu in group
-    }
+    cpu_pool = {cpu for group in selected_groups for cpu in group}
 
     os.environ["A11_CPU_POOL"] = _format_cpu_list(cpu_pool)
 
@@ -215,9 +211,7 @@ def configure_env_runtime(env_id: int) -> tuple[int, ...]:
     try:
         os.sched_setaffinity(0, cpu_pool)
     except Exception as exc:
-        raise RuntimeError(
-            f"env{env_id} failed to restore A11 CPU pool"
-        ) from exc
+        raise RuntimeError(f"env{env_id} failed to restore A11 CPU pool") from exc
 
     _set_common_thread_env(
         ENV_CPU_THREADS,
