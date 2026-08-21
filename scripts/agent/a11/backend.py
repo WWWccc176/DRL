@@ -13,6 +13,7 @@ from .config import (
     BACKEND_BUILD_DIR,
     BACKEND_DIR,
     PROJECT_ROOT,
+    SIEVE_ONLY_ACTIONS,
     SIEVE_POST_BKZ_LOOPS,
 )
 from .io_utils import parse_fplll
@@ -516,7 +517,10 @@ class LatticeBackend:
         pos: int,
         beta: int,
     ) -> dict[str, Any]:
-        uses_gpu = bool(
+        # ``full`` preserves the native adaptive routing exactly.  The ``enu``
+        # profile is an isolated sieve-only ablation, so learned actions bypass
+        # the enumeration route and go directly to the persistent BGJ worker.
+        uses_gpu = SIEVE_ONLY_ACTIONS or bool(
             my_project_backend.action_uses_gpu(
                 matrix_id,
                 pos,

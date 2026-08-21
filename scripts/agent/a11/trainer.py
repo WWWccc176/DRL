@@ -7,7 +7,7 @@ import time
 
 from .action_space import build_action_list
 from .config import (
-    AGENT_VERSION,
+    CHECKPOINT_FILE,
     DETAIL_EVERY_CYCLES,
     ENVS_PER_FILE,
     ENUM_TIME_BUDGET_S,
@@ -18,6 +18,8 @@ from .config import (
     SIEVE_MIN_BETA,
     SIEVE_QUEUE_WAIT_TIMEOUT_S,
     SIEVE_RESPONSE_TIMEOUT_S,
+    SIEVE_ONLY_ACTIONS,
+    TRAIN_PROFILE,
 )
 from .results import (
     append_training_log,
@@ -184,11 +186,12 @@ def train_all(
             "active_progress": active_progress,
             "prior_cycles_unattributed": prior_cycles_unattributed,
             "replay_persisted": False,
+            "train_profile": TRAIN_PROFILE,
         }
 
     def save_checkpoint(reason: str):
         write_progress_snapshot(f"checkpoint:{reason}")
-        path = os.path.join(results_dir, f"{AGENT_VERSION}.pth")
+        path = os.path.join(results_dir, CHECKPOINT_FILE)
         agent.save(path, extra=checkpoint_extra())
         append_training_log(
             results_dir,
@@ -257,7 +260,7 @@ def train_all(
             + SIEVE_RESPONSE_TIMEOUT_S
             + GPU_STEP_TIMEOUT_GRACE_S
         )
-        if int(beta) >= int(SIEVE_MIN_BETA):
+        if SIEVE_ONLY_ACTIONS or int(beta) >= int(SIEVE_MIN_BETA):
             timeout = gpu_timeout
         else:
             timeout = max(1.0, ENUM_TIME_BUDGET_S + ENUM_TIMEOUT_GRACE_S)

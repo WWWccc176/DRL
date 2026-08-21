@@ -32,8 +32,10 @@ if __package__ in (None, ""):
         NUM_GLOBALS,
         RESULTS_DIR,
         SAVE_EVERY,
+        SIEVE_ONLY_ACTIONS,
         TOTAL_UPDATES,
         TRAIN_EVERY,
+        TRAIN_PROFILE,
     )
     from a11.io_utils import gather_files, parse_dim_seed
     from a11.runtime import configure_main_runtime, get_device, seed_everything
@@ -62,8 +64,10 @@ else:
         NUM_GLOBALS,
         RESULTS_DIR,
         SAVE_EVERY,
+        SIEVE_ONLY_ACTIONS,
         TOTAL_UPDATES,
         TRAIN_EVERY,
+        TRAIN_PROFILE,
     )
     from .io_utils import gather_files, parse_dim_seed
     from .runtime import configure_main_runtime, get_device, seed_everything
@@ -95,6 +99,13 @@ def main():
 
     device = get_device()
     print(f"{AGENT_VERSION.upper()} learner device:", device)
+    print(
+        "Training profile:",
+        TRAIN_PROFILE,
+        "| learned-action reducer:",
+        "sieve-only" if SIEVE_ONLY_ACTIONS else "enumeration+sieve",
+    )
+    print("Results directory:", RESULTS_DIR)
     print("Visible learner GPUs:", torch.cuda.device_count())
     print("Backend:", LatticeBackend.module_info())
     print("Action = (pos, beta); algorithm routing = native backend")
@@ -172,8 +183,14 @@ def main():
         )
         resume_extra = agent.load(resume_path)
         if resume_extra:
+            saved_profile = resume_extra.get("train_profile")
+            if saved_profile is not None and str(saved_profile) != TRAIN_PROFILE:
+                raise RuntimeError(
+                    "Checkpoint/profile mismatch: "
+                    f"checkpoint={saved_profile!r}, run={TRAIN_PROFILE!r}"
+                )
             print(
-                f"Resumed {AGENT_VERSION.upper()} checkpoint:",
+                f"Resumed {AGENT_VERSION.upper()}[{TRAIN_PROFILE}] checkpoint:",
                 resume_path,
             )
 

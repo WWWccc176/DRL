@@ -7,6 +7,23 @@ from pathlib import Path
 AGENT_VERSION = "a11"
 BACKEND_API_VERSION = 3
 
+# Training profiles are deliberately runtime-isolated while sharing the same
+# implementation.  ``full`` keeps the current mixed reducer (enumeration for
+# smaller blocks, BGJ sieve for larger blocks).  ``enu`` is the requested
+# sieve-only ablation: every learned reduction action is routed to BGJ.
+#
+# The profile is set by the small launch modules ``a11_full`` / ``a11_enu``
+# before this module is imported.  Direct ``python -m scripts.agent.a11``
+# remains equivalent to ``full`` for backward-compatible behaviour.
+TRAIN_PROFILE = os.environ.get("A11_TRAIN_PROFILE", "full").strip().lower()
+if TRAIN_PROFILE not in {"full", "enu"}:
+    raise ValueError(
+        "A11_TRAIN_PROFILE must be either 'full' or 'enu', "
+        f"got {TRAIN_PROFILE!r}"
+    )
+
+SIEVE_ONLY_ACTIONS = TRAIN_PROFILE == "enu"
+
 _DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 PROJECT_ROOT = os.environ.get(
@@ -33,9 +50,13 @@ RESULTS_DIR = os.path.join(
     PROJECT_ROOT,
     "results",
     AGENT_VERSION,
+    TRAIN_PROFILE,
 )
 
-CHECKPOINT_FILE = f"{AGENT_VERSION}.pth"
+# Each profile owns its checkpoint, logs, progress files, analysis artifacts
+# and sieve cache.  A full run can therefore never resume the enu model (or
+# vice versa) by accident.
+CHECKPOINT_FILE = f"{AGENT_VERSION}_{TRAIN_PROFILE}.pth"
 
 SEED = 42
 
@@ -79,7 +100,11 @@ DETAIL_EVERY_CYCLES = 10
 # initialization. A compact geometric beta grid is used, with backend routing
 # boundaries inserted explicitly so no algorithm transition disappears through
 # rounding.
-ACTION_BETA_MIN = 21
+# The native BGJ bridge accepts blocks only in [40, 95].  The mixed ``full``
+# profile keeps the historical beta>=21 action space exactly; the sieve-only
+# ``enu`` profile raises only its own minimum to 40 so every legal learned
+# action can actually be executed by the sieve backend.
+ACTION_BETA_MIN = 40 if SIEVE_ONLY_ACTIONS else 21
 ACTION_BETA_MAX = 95
 ACTION_BETA_COUNT = 9
 ENUMERATION_MAX_BETA = 52
