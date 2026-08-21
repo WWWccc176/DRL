@@ -99,8 +99,8 @@ ReduceResult reduce_extreme(int64_t matrix_id, Matrix& B,
 
         const double potential_after = log_potential(candidate);
         out.non_worsening = out.completed && out.exact &&
-                            std::isfinite(potential_after) &&
-                            potential_after <= potential_before + 1e-10;
+                            potential_non_worsening(
+                                potential_after, potential_before);
         out.changed = out.completed && out.exact &&
                       !matrices_equal(candidate, original_block);
         out.accepted = out.changed && out.non_worsening;

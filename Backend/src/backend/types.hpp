@@ -58,6 +58,7 @@ enum class PreconditionerProfile {
 
 struct EnumerationBudget {
     int max_rounds = 2;
+    double max_wall_seconds = 60.0;
     double lll_delta = 0.999;
     double gh_factor = 1.05;
     double target_potential_drop_per_dimension = 5.0e-4;

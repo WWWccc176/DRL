@@ -305,7 +305,10 @@ class LatticeEnv:
         lower = cos[np.tril_indices(self.dim, -1)]
         max_cos = float(np.clip(np.max(lower) if lower.size else 0.0, 0.0, 1.0))
         min_cos = float(np.clip(np.min(lower) if lower.size else 0.0, 0.0, 1.0))
-        cos = cos + cos.T
+        # Native evaluator currently fills only the strict lower triangle.
+        # Symmetrize without relying on the diagonal being exactly zero.
+        diagonal = np.diag(np.diag(cos))
+        cos = cos + cos.T - diagonal
 
         gs = np.asarray(info["gs_log_norms"], dtype=np.float32)
         log_b1 = float(gs[0])

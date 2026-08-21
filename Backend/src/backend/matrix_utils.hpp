@@ -18,6 +18,13 @@ void gso_log_norms(const Matrix& B, std::vector<double>& gs);
 double log_potential(const Matrix& B);
 double first_gso_log_norm(const Matrix& B);
 
+// Stable transaction comparison for the approximate GSO-derived potential.
+// Exact lattice validity is checked independently; this only prevents a fixed
+// absolute epsilon from behaving differently as the potential scale changes.
+bool potential_non_worsening(double after, double before,
+                             double relative_tolerance = 1.0e-10,
+                             double absolute_tolerance = 1.0e-10);
+
 bool insert_and_lll(Matrix& B,
                     const std::vector<fplll::Z_NR<mpz_t>>& coefficients,
                     double delta = 0.999,

@@ -43,6 +43,7 @@ class DQNAgent:
         )
         self.memory = MultiDimReplay(capacity_per_dim)
         self._spec_cache = {}
+        self.learn_steps = 0
 
     def spec(self, dim):
         if dim not in self._spec_cache:
@@ -94,25 +95,44 @@ class DQNAgent:
 
         return actions
 
+    @staticmethod
+    def _pack_cos(cos, dim):
+        # The cosine state is symmetric. Persist one triangle (including the
+        # diagonal) so replay keeps the exact state while avoiding the second
+        # redundant d×d copy noted in the audit.
+        matrix = np.asarray(cos, dtype=np.float16)
+        return matrix[np.tril_indices(int(dim), 0)].copy()
+
+    @staticmethod
+    def _unpack_cos_batch(packed, dim):
+        dim = int(dim)
+        lower = np.stack(packed).astype(np.float32, copy=False)
+        batch = lower.shape[0]
+        matrices = np.zeros((batch, dim, dim), dtype=np.float32)
+        rows, cols = np.tril_indices(dim, 0)
+        matrices[:, rows, cols] = lower
+        matrices[:, cols, rows] = lower
+        return matrices
+
     def remember(self, dim, s, a, r, ns, done):
         self.memory.add(
             dim,
             (
-                s["cos"].astype(np.float16),
+                self._pack_cos(s["cos"], dim),
                 s["gs"].astype(np.float16),
                 s["globals"].astype(np.float32),
                 int(a),
                 float(r),
-                ns["cos"].astype(np.float16),
+                self._pack_cos(ns["cos"], dim),
                 ns["gs"].astype(np.float16),
                 ns["globals"].astype(np.float32),
                 float(done),
             ),
         )
 
-    def _dim_loss(self, dim):
+    def _dim_loss(self, dim, per_beta):
         buf = self.memory.buffers[dim]
-        batch, idxs, isw = buf.sample(self.batch_size)
+        batch, idxs, isw = buf.sample(self.batch_size, beta=per_beta)
         spec = self.spec(dim)
 
         def to_float_tensor(arrays):
@@ -123,10 +143,18 @@ class DQNAgent:
                 device=self.device,
             )
 
-        cos = to_float_tensor([b[0] for b in batch])
+        cos = torch.as_tensor(
+            self._unpack_cos_batch([b[0] for b in batch], dim),
+            dtype=torch.float32,
+            device=self.device,
+        )
         gs = to_float_tensor([b[1] for b in batch])
         glob = to_float_tensor([b[2] for b in batch])
-        ncos = to_float_tensor([b[5] for b in batch])
+        ncos = torch.as_tensor(
+            self._unpack_cos_batch([b[5] for b in batch], dim),
+            dtype=torch.float32,
+            device=self.device,
+        )
         ngs = to_float_tensor([b[6] for b in batch])
         nglob = to_float_tensor([b[7] for b in batch])
         a = torch.as_tensor(
@@ -161,12 +189,18 @@ class DQNAgent:
         self.target_net.reset_noise()
         self.optimizer.zero_grad(set_to_none=True)
         total = 0.0
+        per_beta = min(
+            1.0,
+            self.memory.buffers[chosen[0]].PER_b_start
+            + self.memory.buffers[chosen[0]].PER_b_inc * self.learn_steps,
+        )
         for dim in chosen:
-            loss = self._dim_loss(dim)
+            loss = self._dim_loss(dim, per_beta)
             (loss / len(chosen)).backward()
             total += float(loss.item())
         torch.nn.utils.clip_grad_norm_(self.q_net.parameters(), 0.75)
         self.optimizer.step()
+        self.learn_steps += 1
         with torch.no_grad():
             for target_param, online_param in zip(
                 self.target_net.parameters(),
@@ -181,9 +215,20 @@ class DQNAgent:
 
     def save(self, path, extra=None):
         extra = dict(extra or {})
+        np_state = np.random.get_state()
         rng_state = {
             "py": random.getstate(),
-            "np": np.random.get_state(),
+            # Store NumPy's uint32 state as a tensor so the checkpoint remains
+            # compatible with torch.load(weights_only=True).
+            "np": {
+                "bit_generator": str(np_state[0]),
+                "keys": torch.as_tensor(
+                    np.asarray(np_state[1], dtype=np.uint32).astype(np.int64)
+                ),
+                "pos": int(np_state[2]),
+                "has_gauss": int(np_state[3]),
+                "cached_gaussian": float(np_state[4]),
+            },
             "torch": torch.get_rng_state(),
         }
         if self.device.type == "cuda" and torch.cuda.is_available():
@@ -192,10 +237,12 @@ class DQNAgent:
         tmp = path + ".tmp"
         torch.save(
             {
+                "checkpoint_format_version": 2,
                 "q_net": self.q_net.state_dict(),
                 "target_net": self.target_net.state_dict(),
                 "optimizer": self.optimizer.state_dict(),
                 "scheduler": self.scheduler.state_dict(),
+                "agent_state": {"learn_steps": int(self.learn_steps)},
                 "extra": extra,
             },
             tmp,
@@ -205,17 +252,56 @@ class DQNAgent:
     def load(self, path):
         if not os.path.exists(path):
             return {}
-        payload = torch.load(path, map_location=self.device, weights_only=False)
+        try:
+            payload = torch.load(
+                path,
+                map_location=self.device,
+                weights_only=True,
+            )
+        except Exception as exc:
+            # Historical A11 checkpoints stored a raw NumPy ndarray and cannot
+            # be accepted by the restricted loader. Unsafe pickle loading is
+            # available only as an explicit local migration opt-in.
+            if os.environ.get("A11_ALLOW_LEGACY_PICKLE_CHECKPOINT", "0") != "1":
+                raise RuntimeError(
+                    "checkpoint rejected by torch's restricted loader; "
+                    "set A11_ALLOW_LEGACY_PICKLE_CHECKPOINT=1 only to migrate "
+                    "a trusted historical local checkpoint"
+                ) from exc
+            payload = torch.load(
+                path,
+                map_location=self.device,
+                weights_only=False,
+            )
+
         self.q_net.load_state_dict(payload["q_net"])
         self.target_net.load_state_dict(payload["target_net"])
         self.optimizer.load_state_dict(payload["optimizer"])
         self.scheduler.load_state_dict(payload["scheduler"])
+        self.learn_steps = int(payload.get("agent_state", {}).get("learn_steps", 0))
         extra = dict(payload.get("extra", {}))
         rng = extra.pop("rng", None)
         if rng:
             try:
                 random.setstate(rng["py"])
-                np.random.set_state(rng["np"])
+                np_rng = rng["np"]
+                if isinstance(np_rng, dict):
+                    keys = np.asarray(
+                        np_rng["keys"].detach().cpu().numpy(),
+                        dtype=np.uint32,
+                    )
+                    np.random.set_state(
+                        (
+                            str(np_rng["bit_generator"]),
+                            keys,
+                            int(np_rng["pos"]),
+                            int(np_rng["has_gauss"]),
+                            float(np_rng["cached_gaussian"]),
+                        )
+                    )
+                else:
+                    # Trusted legacy migration path.
+                    np.random.set_state(np_rng)
                 torch.set_rng_state(rng["torch"])
                 if (
                     self.device.type == "cuda"

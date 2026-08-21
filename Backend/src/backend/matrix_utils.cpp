@@ -291,8 +291,12 @@ Matrix parse_matrix(const std::string& text) {
     Matrix matrix;
     std::istringstream input(text);
     input >> matrix;
-    if (!input && matrix.get_rows() == 0) {
-        throw std::runtime_error("failed to parse an integer lattice matrix");
+    if (input.fail() || matrix.get_rows() <= 0 || matrix.get_cols() <= 0) {
+        throw std::runtime_error("failed to parse a complete integer lattice matrix");
+    }
+    input >> std::ws;
+    if (!input.eof()) {
+        throw std::runtime_error("unexpected trailing data after integer lattice matrix");
     }
     return matrix;
 }
@@ -377,40 +381,58 @@ void gso_log_norms(const Matrix& B, std::vector<double>& gs) {
     int cols = 0;
     extract_scaled_matrix(B, matrix, scales, n, cols);
 
-    gs.assign(n, 0.0);
-    std::vector<double> orthogonal(static_cast<std::size_t>(n) * cols, 0.0);
-    std::vector<double> norm_squared(n, 0.0);
-    std::vector<double> current(cols, 0.0);
+    gs.assign(n, std::numeric_limits<double>::quiet_NaN());
+    std::vector<long double> orthogonal(
+        static_cast<std::size_t>(n) * cols, 0.0L);
+    std::vector<long double> norm_squared(n, 0.0L);
+    std::vector<long double> current(cols, 0.0L);
 
     for (int i = 0; i < n; ++i) {
         const double* source = &matrix[static_cast<std::size_t>(i) * cols];
-        std::copy(source, source + cols, current.begin());
+        for (int k = 0; k < cols; ++k) current[k] = source[k];
 
-        // A second modified-Gram-Schmidt pass is inexpensive at these dimensions
-        // and materially improves the transaction metric on ill-conditioned bases.
+        // Re-orthogonalized modified Gram-Schmidt in long double keeps the
+        // approximate transaction metric usable on strongly reduced bases.
+        // If numerical rank is lost, return NaN instead of the old artificial
+        // -690 sentinel: callers can then reject/rollback the action safely.
         for (int pass = 0; pass < 2; ++pass) {
             for (int j = 0; j < i; ++j) {
-                if (norm_squared[j] <= 1e-300) continue;
-                const double* previous =
+                if (!(norm_squared[j] >
+                      std::numeric_limits<long double>::min())) {
+                    return;
+                }
+                const long double* previous =
                     &orthogonal[static_cast<std::size_t>(j) * cols];
-                double product = 0.0;
-                for (int k = 0; k < cols; ++k) product += current[k] * previous[k];
-                const double coefficient = product / norm_squared[j];
+                long double product = 0.0L;
+                for (int k = 0; k < cols; ++k) {
+                    product += current[k] * previous[k];
+                }
+                const long double coefficient = product / norm_squared[j];
+                if (!std::isfinite(coefficient)) return;
                 for (int k = 0; k < cols; ++k) {
                     current[k] -= coefficient * previous[k];
                 }
             }
         }
 
-        double squared = 0.0;
+        long double squared = 0.0L;
         for (int k = 0; k < cols; ++k) {
             orthogonal[static_cast<std::size_t>(i) * cols + k] = current[k];
             squared += current[k] * current[k];
         }
+        if (!(squared > std::numeric_limits<long double>::min()) ||
+            !std::isfinite(squared)) {
+            return;
+        }
         norm_squared[i] = squared;
-        gs[i] = squared > 1e-300
-                    ? 0.5 * std::log(squared) + scales[i]
-                    : -690.0;
+        const long double value =
+            0.5L * std::log(squared) + static_cast<long double>(scales[i]);
+        if (!std::isfinite(value) ||
+            value > static_cast<long double>(std::numeric_limits<double>::max()) ||
+            value < -static_cast<long double>(std::numeric_limits<double>::max())) {
+            return;
+        }
+        gs[i] = static_cast<double>(value);
     }
 }
 
@@ -429,6 +451,17 @@ double first_gso_log_norm(const Matrix& B) {
     std::vector<double> gs;
     gso_log_norms(B, gs);
     return gs.empty() ? 1e300 : gs.front();
+}
+
+bool potential_non_worsening(double after, double before,
+                             double relative_tolerance,
+                             double absolute_tolerance) {
+    if (!std::isfinite(after) || !std::isfinite(before)) return false;
+    const double scale = std::max({1.0, std::fabs(after), std::fabs(before)});
+    const double tolerance =
+        std::max(0.0, absolute_tolerance) +
+        std::max(0.0, relative_tolerance) * scale;
+    return after <= before + tolerance;
 }
 
 bool insert_and_lll(Matrix& B,

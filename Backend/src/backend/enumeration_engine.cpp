@@ -4,6 +4,7 @@
 #include "matrix_utils.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <exception>
@@ -74,6 +75,8 @@ EnumerationBudget enumeration_budget_from_environment() {
     EnumerationBudget budget;
     budget.max_rounds = static_cast<int>(environment_integer(
         "LATTICE_ENUM_MAX_ROUNDS", budget.max_rounds, 1, 4));
+    budget.max_wall_seconds = environment_double(
+        "LATTICE_ENUM_MAX_SECONDS", budget.max_wall_seconds, 1.0, 86400.0);
     budget.lll_delta = environment_double(
         "LATTICE_ENUM_LLL_DELTA", budget.lll_delta, 0.75, 0.999999);
     budget.gh_factor = environment_double(
@@ -93,6 +96,13 @@ EnumerationBudget enumeration_budget_from_environment() {
 EnumerationRunInfo run_extreme_enumeration(
     Matrix& B, const EnumerationBudget& budget) {
     EnumerationRunInfo out;
+    const auto started = std::chrono::steady_clock::now();
+    const auto budget_exhausted = [&]() {
+        return budget.max_wall_seconds > 0.0 &&
+               std::chrono::duration<double>(
+                   std::chrono::steady_clock::now() - started).count() >=
+                   budget.max_wall_seconds;
+    };
     const int dimension = B.get_rows();
     if (dimension < kMinimumActionBeta || dimension > kEnumerationMaxBeta) {
         out.stop_reason = StopReason::invalid_input;
@@ -114,6 +124,13 @@ EnumerationRunInfo run_extreme_enumeration(
         out.stop_reason = StopReason::precondition_failed;
         return out;
     }
+    if (budget_exhausted()) {
+        B = std::move(original);
+        out.stop_reason = StopReason::budget_exhausted;
+        out.early_stopped = true;
+        out.error = "local enumeration wall-clock budget exhausted during LLL";
+        return out;
+    }
 
     double previous_potential = log_potential(B);
     if (!std::isfinite(previous_potential)) {
@@ -127,6 +144,15 @@ EnumerationRunInfo run_extreme_enumeration(
     StopReason natural_stop = StopReason::completed;
 
     for (int round = 0; round < std::max(1, budget.max_rounds); ++round) {
+        if (budget_exhausted()) {
+            B = std::move(original);
+            out.completed = false;
+            out.changed = false;
+            out.stop_reason = StopReason::budget_exhausted;
+            out.early_stopped = true;
+            out.error = "local enumeration wall-clock budget exhausted";
+            return out;
+        }
         Matrix before_round = B;
         std::string round_error;
 
@@ -135,6 +161,18 @@ EnumerationRunInfo run_extreme_enumeration(
             B = std::move(original);
             out.stop_reason = StopReason::enumeration_failed;
             out.error = std::move(round_error);
+            return out;
+        }
+        // fplll's svp_reduction is not cooperatively interruptible. This
+        // catches an overrun immediately after it returns; trainer.py provides
+        // the hard kill boundary if it never returns.
+        if (budget_exhausted()) {
+            B = std::move(original);
+            out.completed = false;
+            out.changed = false;
+            out.stop_reason = StopReason::budget_exhausted;
+            out.early_stopped = true;
+            out.error = "local enumeration wall-clock budget exhausted in SVP round";
             return out;
         }
 
@@ -153,7 +191,7 @@ EnumerationRunInfo run_extreme_enumeration(
             (previous_potential - current_potential) /
             static_cast<double>(dimension);
 
-        if (current_potential > previous_potential + 1e-10) {
+        if (!potential_non_worsening(current_potential, previous_potential)) {
             B = std::move(before_round);
             natural_stop = StopReason::stagnation;
             out.early_stopped = true;
@@ -193,8 +231,8 @@ EnumerationRunInfo run_extreme_enumeration(
     }
 
     const double final_potential = log_potential(B);
-    const bool non_worsening = std::isfinite(final_potential) &&
-                               final_potential <= initial_potential + 1e-10;
+    const bool non_worsening =
+        potential_non_worsening(final_potential, initial_potential);
     const bool changed = !matrices_equal(B, original);
 
     out.completed = true;

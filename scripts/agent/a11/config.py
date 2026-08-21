@@ -5,6 +5,7 @@ from pathlib import Path
 
 
 AGENT_VERSION = "a11"
+BACKEND_API_VERSION = 3
 
 _DEFAULT_PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
@@ -355,6 +356,15 @@ SIEVE_SERVICE_CLOSE_SECONDS = float(
     )
 )
 
+# Recycle a long-lived native BGJ process between requests so its global
+# allocator/CUDA context cannot accumulate indefinitely. 0 disables recycling.
+SIEVE_WORKER_MAX_TASKS = int(
+    os.environ.get(
+        "A11_SIEVE_WORKER_MAX_TASKS",
+        "5000",
+    )
+)
+
 
 # ============================================================
 # Enumeration
@@ -364,6 +374,42 @@ ENUM_TIME_BUDGET_S = float(
     os.environ.get(
         "A11_ENUM_TIME_BUDGET_S",
         "60.0",
+    )
+)
+
+# CPU enumeration runs inside the environment process. fplll's single
+# svp_reduction call is not cooperatively interruptible, so the main process
+# treats the environment itself as the killable isolation boundary. The
+# native layer also receives the same budget and checks it between rounds.
+ENUM_TIMEOUT_GRACE_S = float(
+    os.environ.get(
+        "A11_ENUM_TIMEOUT_GRACE_S",
+        "15.0",
+    )
+)
+
+# Environment fault isolation. A native SIGSEGV or an over-budget reduction
+# discards only the current episode and respawns that environment on the same
+# file. Repeated failures on the same slot still stop training so deterministic
+# corruption is not hidden forever.
+ENV_MAX_CONSECUTIVE_FAILURES = int(
+    os.environ.get(
+        "A11_ENV_MAX_CONSECUTIVE_FAILURES",
+        "3",
+    )
+)
+
+ENV_RESTART_TIMEOUT_S = float(
+    os.environ.get(
+        "A11_ENV_RESTART_TIMEOUT_S",
+        "900.0",
+    )
+)
+
+GPU_STEP_TIMEOUT_GRACE_S = float(
+    os.environ.get(
+        "A11_GPU_STEP_TIMEOUT_GRACE_S",
+        "30.0",
     )
 )
 

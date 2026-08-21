@@ -14,6 +14,8 @@ namespace {
 constexpr int kEnumerationBkzCeiling = kMaximumActionBeta;
 std::vector<fplll::Strategy> g_strategies;
 std::once_flag g_strategy_once;
+bool g_strategies_from_json = false;
+std::string g_strategies_path;
 
 std::vector<fplll::Strategy>& strategies() {
     std::call_once(g_strategy_once, []() {
@@ -21,6 +23,10 @@ std::vector<fplll::Strategy>& strategies() {
         if (configured && *configured) {
             try {
                 g_strategies = fplll::load_strategies_json(configured);
+                if (!g_strategies.empty()) {
+                    g_strategies_from_json = true;
+                    g_strategies_path = configured;
+                }
             } catch (...) {
                 g_strategies.clear();
             }
@@ -29,7 +35,13 @@ std::vector<fplll::Strategy>& strategies() {
         if (g_strategies.empty()) {
             try {
                 const std::string path = fplll::strategy_full_path("default.json");
-                if (!path.empty()) g_strategies = fplll::load_strategies_json(path);
+                if (!path.empty()) {
+                    g_strategies = fplll::load_strategies_json(path);
+                    if (!g_strategies.empty()) {
+                        g_strategies_from_json = true;
+                        g_strategies_path = path;
+                    }
+                }
             } catch (...) {
                 g_strategies.clear();
             }
@@ -49,6 +61,21 @@ bool set_error(std::string* error, const std::string& message) {
 }
 
 }  // namespace
+
+
+bool strategies_loaded_from_json() {
+    (void)strategies();
+    return g_strategies_from_json;
+}
+
+std::string strategies_source_path() {
+    (void)strategies();
+    return g_strategies_path;
+}
+
+std::size_t strategies_count() {
+    return strategies().size();
+}
 
 bool run_bkz2(Matrix& B, int block_size, int loops, double gh_factor,
               std::string* error) {

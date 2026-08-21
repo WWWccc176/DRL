@@ -22,6 +22,7 @@ set(LATTICE_SWC_DRAM_GB 2 CACHE STRING "Solution cache DRAM budget in GiB")
 set(LATTICE_UT_TABLE_DRAM_GB 6 CACHE STRING "UID table DRAM budget in GiB")
 set(LATTICE_UT_BUFFER_DRAM_GB 3 CACHE STRING "UID buffer DRAM budget in GiB")
 option(LATTICE_ENABLE_NUMA "Enable NUMA interleaving when libnuma is available" ON)
+option(LATTICE_ENABLE_SANITIZERS "Enable ASAN/UBSAN for C++ backend debugging" OFF)
 
 
 # ============================================================
@@ -376,3 +377,29 @@ target_link_libraries(
         Threads::Threads
         CUDA::cudart
 )
+
+
+# ============================================================
+# Optional native diagnostics
+# ============================================================
+
+if(LATTICE_ENABLE_SANITIZERS)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        foreach(target local_sieve_engine my_project_backend)
+            target_compile_options(
+                ${target}
+                PRIVATE
+                    $<$<COMPILE_LANGUAGE:CXX>:-fsanitize=address,undefined>
+                    $<$<COMPILE_LANGUAGE:CXX>:-fno-omit-frame-pointer>
+            )
+        endforeach()
+        target_link_options(
+            my_project_backend
+            PRIVATE
+                -fsanitize=address,undefined
+                -fno-omit-frame-pointer
+        )
+    else()
+        message(FATAL_ERROR "LATTICE_ENABLE_SANITIZERS requires GCC or Clang")
+    endif()
+endif()

@@ -36,6 +36,27 @@ std::mutex g_matrix_pool_mutex;
 
 constexpr int kAdaptiveSieveThreshold = lattice_backend::kSieveThreshold;
 constexpr int kCudaFeatureMinDimension = 256;
+constexpr int kBackendApiVersion = 3;
+
+std::uint64_t configured_sieve_static_budget_bytes() {
+    std::uint64_t gib = 0;
+#ifdef LATTICE_PWC_DRAM_GB
+    gib += static_cast<std::uint64_t>(LATTICE_PWC_DRAM_GB);
+#endif
+#ifdef LATTICE_BWC_DRAM_GB
+    gib += static_cast<std::uint64_t>(LATTICE_BWC_DRAM_GB);
+#endif
+#ifdef LATTICE_SWC_DRAM_GB
+    gib += static_cast<std::uint64_t>(LATTICE_SWC_DRAM_GB);
+#endif
+#ifdef LATTICE_UT_TABLE_DRAM_GB
+    gib += static_cast<std::uint64_t>(LATTICE_UT_TABLE_DRAM_GB);
+#endif
+#ifdef LATTICE_UT_BUFFER_DRAM_GB
+    gib += static_cast<std::uint64_t>(LATTICE_UT_BUFFER_DRAM_GB);
+#endif
+    return gib * 1024ULL * 1024ULL * 1024ULL;
+}
 
 double norm_from_log(double log_norm) {
     if (!std::isfinite(log_norm)) {
@@ -121,6 +142,19 @@ int64_t clone_matrix(int64_t id) {
 }
 
 py::dict evaluate_matrix(int64_t id) {
+    Matrix snapshot;
+    {
+        // Copy the exact basis while holding the pool mutex, then release the
+        // global lock before the O(d^3) feature calculation. Matrix IDs remain
+        // stable because each env process owns its matrix and is synchronous.
+        std::lock_guard<std::mutex> lock(g_matrix_pool_mutex);
+        const auto iterator = g_matrix_pool.find(id);
+        if (iterator == g_matrix_pool.end()) {
+            throw std::runtime_error("invalid matrix id");
+        }
+        snapshot = iterator->second;
+    }
+
     std::vector<double> matrix;
     std::vector<double> scales;
     std::vector<double> gso;
@@ -133,13 +167,16 @@ py::dict evaluate_matrix(int64_t id) {
 
     {
         py::gil_scoped_release release;
-        std::lock_guard<std::mutex> lock(g_matrix_pool_mutex);
-        const auto iterator = g_matrix_pool.find(id);
-        if (iterator == g_matrix_pool.end()) throw std::runtime_error("invalid matrix id");
-
         lattice_backend::extract_scaled_matrix(
-            iterator->second, matrix, scales, dimension, cols);
-        lattice_backend::gso_log_norms(iterator->second, gso);
+            snapshot, matrix, scales, dimension, cols);
+        lattice_backend::gso_log_norms(snapshot, gso);
+        if (static_cast<int>(gso.size()) != dimension ||
+            !std::all_of(gso.begin(), gso.end(), [](double value) {
+                return std::isfinite(value);
+            })) {
+            throw std::runtime_error(
+                "GSO feature calculation lost numerical rank; action must be rolled back/restarted");
+        }
 
         gram.assign(static_cast<std::size_t>(dimension) * dimension, 0.0);
         cosine.assign(static_cast<std::size_t>(dimension) * dimension, 0.0f);
@@ -165,17 +202,39 @@ py::dict evaluate_matrix(int64_t id) {
             }
             for (int i = 0; i < dimension; ++i) {
                 for (int j = 0; j < i; ++j) {
-                    const double denominator = std::sqrt(
+                    const double diagonal_product =
                         gram[static_cast<std::size_t>(i) * dimension + i] *
-                        gram[static_cast<std::size_t>(j) * dimension + j]) + 1e-20;
-                    const double value = std::fabs(
-                        gram[static_cast<std::size_t>(i) * dimension + j] /
-                        denominator);
+                        gram[static_cast<std::size_t>(j) * dimension + j];
+                    double value = 0.0;
+                    if (std::isfinite(diagonal_product) &&
+                        diagonal_product > 0.0) {
+                        const double denominator = std::sqrt(diagonal_product);
+                        const double raw = std::fabs(
+                            gram[static_cast<std::size_t>(i) * dimension + j] /
+                            denominator);
+                        if (std::isfinite(raw)) {
+                            value = std::max(0.0, std::min(1.0, raw));
+                        }
+                    }
                     cosine[static_cast<std::size_t>(i) * dimension + j] =
                         static_cast<float>(value);
-                    statistics[0] = std::max(statistics[0], value);
-                    statistics[1] += value;
                 }
+            }
+        }
+
+        // Recompute the summary from the sanitized lower triangle for both CPU
+        // and CUDA paths so non-finite kernel output never reaches Python.
+        statistics[0] = 0.0;
+        statistics[1] = 0.0;
+        for (int i = 0; i < dimension; ++i) {
+            for (int j = 0; j < i; ++j) {
+                auto& entry = cosine[static_cast<std::size_t>(i) * dimension + j];
+                double value = static_cast<double>(entry);
+                if (!std::isfinite(value)) value = 0.0;
+                value = std::max(0.0, std::min(1.0, value));
+                entry = static_cast<float>(value);
+                statistics[0] = std::max(statistics[0], value);
+                statistics[1] += value;
             }
         }
     }
@@ -257,8 +316,9 @@ py::dict reduce_bkz2_global_api(int64_t matrix_id, int beta, int loops) {
         result.changed = result.completed &&
                          !lattice_backend::matrices_equal(before, iterator->second);
         result.non_worsening = result.completed &&
-            lattice_backend::log_potential(iterator->second) <=
-                lattice_backend::log_potential(before) + 1e-10;
+            lattice_backend::potential_non_worsening(
+                lattice_backend::log_potential(iterator->second),
+                lattice_backend::log_potential(before));
         result.accepted = result.changed && result.non_worsening;
         if (!result.non_worsening) iterator->second = std::move(before);
         result.stop_reason = !result.completed
@@ -304,6 +364,24 @@ py::dict sieve_reduce_serialized_api(
     int free_dim,
     int free_dim_cap) {
     Matrix block = lattice_backend::parse_matrix(matrix_text);
+    if (max_candidates != 1) {
+        throw std::invalid_argument(
+            "persistent BGJ returns exactly one recovered block; max_candidates must be 1");
+    }
+    if (max_rounds != 1) {
+        throw std::invalid_argument(
+            "one RL sieve action is exactly one BGJ stage; max_rounds must be 1");
+    }
+    if (max_pairs != 0) {
+        throw std::invalid_argument(
+            "max_pairs is not supported by the vendored BGJ engine; use 0");
+    }
+    if (memory_budget_mb < 0) {
+        throw std::invalid_argument("memory_budget_mb must be non-negative");
+    }
+    if (free_dim < -1 || free_dim_cap < 0) {
+        throw std::invalid_argument("free_dim/free_dim_cap are invalid");
+    }
     if (beta != block.get_rows() || beta < 40 ||
         beta > lattice_backend::kMaximumActionBeta ||
         block.get_cols() < block.get_rows()) {
@@ -347,6 +425,46 @@ py::dict sieve_reduce_serialized_api(
             budget.progressive = false;
             if (std::isfinite(time_budget_s) && time_budget_s > 0.0) {
                 budget.max_wall_seconds = time_budget_s;
+                budget.bgj_max_seconds = time_budget_s;
+            }
+
+            // Convert the explicit per-worker memory budget into the native
+            // database-vector cap. The factor intentionally includes generous
+            // allocator/index overhead; it only tightens the existing native
+            // cap and leaves the standard 32 GiB configuration unchanged.
+            if (memory_budget_mb > 0) {
+                const std::uint64_t bytes =
+                    static_cast<std::uint64_t>(memory_budget_mb) * 1024ULL * 1024ULL;
+                const std::uint64_t static_bytes =
+                    configured_sieve_static_budget_bytes();
+                if (bytes <= static_bytes) {
+                    throw std::runtime_error(
+                        "sieve memory budget is below the backend's compiled static cache budget");
+                }
+                const std::uint64_t dynamic_bytes = bytes - static_bytes;
+                const std::uint64_t bytes_per_vector = std::max<std::uint64_t>(
+                    256ULL,
+                    8ULL * static_cast<std::uint64_t>(beta + 32));
+                const std::uint64_t memory_vector_cap =
+                    dynamic_bytes / bytes_per_vector;
+                if (memory_vector_cap < 128ULL) {
+                    throw std::runtime_error(
+                        "sieve memory budget leaves too little dynamic memory for the minimum database");
+                }
+                budget.max_vectors = std::min<std::int64_t>(
+                    budget.max_vectors,
+                    static_cast<std::int64_t>(std::min<std::uint64_t>(
+                        memory_vector_cap,
+                        static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))));
+            }
+
+            // -1 keeps the native automatic choice. An explicit free dimension
+            // request is capped exactly as advertised by free_dim_cap.
+            if (free_dim >= 0) {
+                const int requested_free = std::min(free_dim, free_dim_cap);
+                budget.max_csd = std::max(
+                    39,
+                    std::min(budget.max_csd, beta - requested_free));
             }
 
             const lattice_backend::SieveRunInfo sieve =
@@ -385,8 +503,8 @@ py::dict sieve_reduce_serialized_api(
         result.changed = result.completed && result.exact &&
                          !lattice_backend::matrices_equal(original, block);
         result.non_worsening = result.completed && result.exact &&
-                               std::isfinite(potential_after) &&
-                               potential_after <= potential_before + 1e-10;
+                               lattice_backend::potential_non_worsening(
+                                   potential_after, potential_before);
         result.accepted = result.changed && result.non_worsening;
         result.quality_target_reached = result.completed && result.exact &&
             (b1_relative_improvement >= min_b1_rel_improvement ||
@@ -427,6 +545,9 @@ py::dict sieve_reduce_serialized_api(
     out["requested_free_dim"] = free_dim;
     out["requested_free_dim_cap"] = free_dim_cap;
     out["effective_max_bgj_calls"] = 1;
+    out["effective_max_candidates"] = 1;
+    out["effective_max_rounds"] = 1;
+    out["effective_max_pairs"] = 0;
     return out;
 }
 
@@ -510,8 +631,8 @@ py::dict apply_external_block_api(
                         result.changed = !lattice_backend::matrices_equal(
                             full_before, basis);
                         result.non_worsening =
-                            std::isfinite(potential_after) &&
-                            potential_after <= potential_before + 1e-10;
+                            lattice_backend::potential_non_worsening(
+                                potential_after, potential_before);
                         result.accepted =
                             result.changed && result.non_worsening;
 
@@ -582,8 +703,9 @@ py::dict full_lll_api(int64_t matrix_id) {
             potential_after = lattice_backend::log_potential(basis);
             log_b1_after = lattice_backend::first_gso_log_norm(basis);
             result.changed = !lattice_backend::matrices_equal(before, basis);
-            result.non_worsening = std::isfinite(potential_after) &&
-                                   potential_after <= potential_before + 1e-10;
+            result.non_worsening =
+                lattice_backend::potential_non_worsening(
+                    potential_after, potential_before);
             result.accepted = result.changed && result.non_worsening;
 
             if (!result.non_worsening) {
@@ -664,8 +786,8 @@ py::dict reduce_sieve_block_api(int64_t matrix_id, int pos, int beta) {
             fplll::lll_reduction(candidate, 0.999);
             const double local_potential_after = lattice_backend::log_potential(candidate);
             const bool local_non_worsening =
-                std::isfinite(local_potential_after) &&
-                local_potential_after <= local_potential_before + 1e-10;
+                lattice_backend::potential_non_worsening(
+                    local_potential_after, local_potential_before);
 
             if (local_non_worsening &&
                 !lattice_backend::matrices_equal(local_before, candidate)) {
@@ -680,8 +802,8 @@ py::dict reduce_sieve_block_api(int64_t matrix_id, int pos, int beta) {
                 fplll::lll_reduction(basis, 0.999);
                 const double full_potential_after = lattice_backend::log_potential(basis);
                 result.non_worsening =
-                    std::isfinite(full_potential_after) &&
-                    full_potential_after <= full_potential_before + 1e-10;
+                    lattice_backend::potential_non_worsening(
+                        full_potential_after, full_potential_before);
                 result.changed =
                     !lattice_backend::matrices_equal(full_before, basis);
                 result.accepted = result.changed && result.non_worsening;
@@ -743,6 +865,14 @@ PYBIND11_MODULE(my_project_backend, module) {
     module.doc() =
         "Exact MPZ lattice backend with budgeted BKZ/enumeration and an integrated BGJ/DH sieve";
 
+    module.def("backend_api_version", []() { return kBackendApiVersion; });
+    module.def("strategies_info", []() {
+        py::dict out;
+        out["from_json"] = lattice_backend::strategies_loaded_from_json();
+        out["path"] = lattice_backend::strategies_source_path();
+        out["count"] = static_cast<int>(lattice_backend::strategies_count());
+        return out;
+    });
     module.def("create_matrix", &create_matrix, py::arg("matrix_str"));
     module.def("create_matrix_lll", &create_matrix_lll, py::arg("matrix_str"));
     module.def("reduce_extreme", &reduce_extreme_api,

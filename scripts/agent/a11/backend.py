@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 
 from .config import (
+    BACKEND_API_VERSION,
     BACKEND_BUILD_DIR,
     BACKEND_DIR,
     PROJECT_ROOT,
@@ -172,12 +173,20 @@ class LatticeBackend:
             except Exception:
                 threshold = None
 
+        api_version = None
+        if hasattr(my_project_backend, "backend_api_version"):
+            try:
+                api_version = int(my_project_backend.backend_api_version())
+            except Exception:
+                api_version = None
+
         return {
             "file": getattr(
                 my_project_backend,
                 "__file__",
                 "?",
             ),
+            "backend_api_version": api_version,
             "has_reduce_extreme": hasattr(
                 my_project_backend,
                 "reduce_extreme",
@@ -231,6 +240,7 @@ class LatticeBackend:
             )
 
         required = (
+            "backend_api_version",
             "create_matrix_lll",
             "clone_matrix",
             "free_matrix",
@@ -259,6 +269,34 @@ class LatticeBackend:
             raise RuntimeError(
                 "Backend is missing persistent-sieve APIs:\n  " + "\n  ".join(missing)
             )
+
+        api_version = int(my_project_backend.backend_api_version())
+        if api_version != BACKEND_API_VERSION:
+            raise RuntimeError(
+                "A11 native backend API version mismatch:\n"
+                f"  loaded   = {api_version}\n"
+                f"  expected = {BACKEND_API_VERSION}\n"
+                "Rebuild Backend/build from the current source tree."
+            )
+
+        source_root = Path(BACKEND_DIR) / "src"
+        source_files = [
+            path
+            for suffix in ("*.cpp", "*.hpp", "*.cu", "*.h")
+            for path in source_root.rglob(suffix)
+        ]
+        source_files.append(Path(BACKEND_DIR) / "CMakeLists.txt")
+        source_files = [path for path in source_files if path.exists()]
+        if source_files and module_file.exists():
+            newest_source_mtime = max(path.stat().st_mtime for path in source_files)
+            if module_file.stat().st_mtime + 1.0 < newest_source_mtime:
+                newest = max(source_files, key=lambda path: path.stat().st_mtime)
+                raise RuntimeError(
+                    "A11 native backend is older than its source tree:\n"
+                    f"  module        = {module_file}\n"
+                    f"  newest source = {newest}\n"
+                    "Rebuild Backend/build before training."
+                )
 
     # --------------------------------------------------------
     # Matrix ownership

@@ -51,7 +51,7 @@ class SumTree:
 
 
 class PERBuffer:
-    PER_e, PER_a, PER_b, PER_b_inc = 1e-5, 0.6, 0.4, 0.001
+    PER_e, PER_a, PER_b_start, PER_b_inc = 1e-5, 0.6, 0.4, 0.001
 
     def __init__(self, capacity):
         self.tree = SumTree(capacity)
@@ -62,11 +62,14 @@ class PERBuffer:
     def add(self, err, sample):
         self.tree.add(self._prio(err), sample)
 
-    def sample(self, n):
+    def sample(self, n, beta=None):
         batch, idxs, prios = [], [], []
         total = self.tree.total()
+        if total <= 0.0:
+            raise RuntimeError("cannot sample from an empty/zero-priority PER buffer")
         seg = total / n
-        self.PER_b = min(1.0, self.PER_b + self.PER_b_inc)
+        beta = self.PER_b_start if beta is None else float(beta)
+        beta = min(1.0, max(self.PER_b_start, beta))
         for i in range(n):
             s = random.uniform(seg * i, seg * (i + 1))
             idx, p, data = self.tree.get(s)
@@ -76,7 +79,7 @@ class PERBuffer:
             idxs.append(idx)
             batch.append(data)
         probs = np.array(prios) / (self.tree.total() + 1e-10)
-        w = (self.tree.n_entries * probs + 1e-10) ** (-self.PER_b)
+        w = (self.tree.n_entries * probs + 1e-10) ** (-beta)
         w /= w.max()
         return batch, idxs, torch.as_tensor(w, dtype=torch.float32)
 

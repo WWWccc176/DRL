@@ -1,12 +1,17 @@
 #pragma once
 
 #include "types.hpp"
+#include <cstddef>
 #include <string>
 
 namespace lattice_backend {
 
 bool run_bkz2(Matrix& B, int block_size, int loops, double gh_factor = 1.0,
               std::string* error = nullptr);
+
+bool strategies_loaded_from_json();
+std::string strategies_source_path();
+std::size_t strategies_count();
 
 bool run_bkz2_preconditioner(Matrix& B, PreconditionerProfile profile,
                              std::string* error = nullptr);

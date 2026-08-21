@@ -10,7 +10,14 @@ from .config import (
     AGENT_VERSION,
     DETAIL_EVERY_CYCLES,
     ENVS_PER_FILE,
+    ENUM_TIME_BUDGET_S,
+    ENUM_TIMEOUT_GRACE_S,
+    ENV_MAX_CONSECUTIVE_FAILURES,
+    GPU_STEP_TIMEOUT_GRACE_S,
     SIEVE_MAX_ROUNDS,
+    SIEVE_MIN_BETA,
+    SIEVE_QUEUE_WAIT_TIMEOUT_S,
+    SIEVE_RESPONSE_TIMEOUT_S,
 )
 from .results import (
     append_training_log,
@@ -58,6 +65,11 @@ def train_all(
         global_best.update(resume_extra.get("global_best", {}))
         global_info.update(resume_extra.get("global_info", {}))
         history = resume_extra.get("history", history)
+        append_training_log(
+            results_dir,
+            "resume: replay buffer is intentionally not persisted; "
+            "learner/network/optimizer/RNG state restored, replay starts empty",
+        )
 
     latest_loss = float(history["loss"][-1]) if history["loss"] else 0.0
     interrupted = False
@@ -171,6 +183,7 @@ def train_all(
             "completed_runs": completed_runs,
             "active_progress": active_progress,
             "prior_cycles_unattributed": prior_cycles_unattributed,
+            "replay_persisted": False,
         }
 
     def save_checkpoint(reason: str):
@@ -229,10 +242,31 @@ def train_all(
         append_training_log(results_dir, message)
 
     def eps_now():
-        return max(
-            0.05,
-            0.3 * (1.0 - updates / max(1, total_updates)),
+        # Exploration follows environment interaction, not whether a learner
+        # update happened to return a positive loss. Scale by train_every so the
+        # nominal decay horizon remains aligned with total_updates.
+        decay_env_steps = max(1, int(total_updates) * max(1, int(train_every)))
+        progress = min(1.0, env_steps / decay_env_steps)
+        return max(0.05, 0.3 * (1.0 - progress))
+
+    def action_timeout_seconds(entry: dict, action_idx: int) -> float:
+        dim = int(entry["dim"])
+        _, beta = build_action_list(dim)[int(action_idx)]
+        gpu_timeout = (
+            SIEVE_QUEUE_WAIT_TIMEOUT_S
+            + SIEVE_RESPONSE_TIMEOUT_S
+            + GPU_STEP_TIMEOUT_GRACE_S
         )
+        if int(beta) >= int(SIEVE_MIN_BETA):
+            timeout = gpu_timeout
+        else:
+            timeout = max(1.0, ENUM_TIME_BUDGET_S + ENUM_TIMEOUT_GRACE_S)
+
+        # The terminal step performs the fixed GPU final polish after the agent
+        # action, so its wall-clock envelope must include both operations.
+        if int(entry.get("next_step", 0)) >= int(entry["max_steps"]):
+            timeout += gpu_timeout
+        return timeout
 
     try:
         states = vec_env.reset_all()
@@ -257,6 +291,72 @@ def train_all(
 
         prev_s = [None] * num_envs
         prev_a = [None] * num_envs
+        pending_since: dict[int, float] = {}
+        pending_timeout: dict[int, float] = {}
+        consecutive_failures = [0] * num_envs
+
+        def dispatch_one(env_id: int, action_idx: int) -> None:
+            vec_env.send_one(env_id, int(action_idx))
+            pending.add(env_id)
+            pending_since[env_id] = time.monotonic()
+            pending_timeout[env_id] = action_timeout_seconds(
+                active_progress[env_id],
+                int(action_idx),
+            )
+
+        def recover_env(env_id: int, reason: str):
+            pending.discard(env_id)
+            pending_since.pop(env_id, None)
+            pending_timeout.pop(env_id, None)
+            consecutive_failures[env_id] += 1
+
+            entry = active_progress[env_id]
+            message = (
+                f"env recovery: env={env_id}, dim={entry['dim']}, "
+                f"seed={entry['seed_id']}, step={entry.get('next_step')}, "
+                f"failure={consecutive_failures[env_id]}/"
+                f"{ENV_MAX_CONSECUTIVE_FAILURES}, reason={reason}"
+            )
+            print("[A11] " + message, flush=True)
+            append_training_log(results_dir, message)
+            append_progress_event(
+                "env_recovery",
+                env_id=env_id,
+                dim=entry["dim"],
+                seed_id=entry["seed_id"],
+                run_index=entry["run_index"],
+                failed_step=entry.get("next_step"),
+                action_idx=entry.get("action_idx"),
+                consecutive_failures=consecutive_failures[env_id],
+                reason=reason,
+            )
+
+            if consecutive_failures[env_id] > ENV_MAX_CONSECUTIVE_FAILURES:
+                raise RuntimeError(
+                    f"env{env_id} exceeded "
+                    f"A11_ENV_MAX_CONSECUTIVE_FAILURES="
+                    f"{ENV_MAX_CONSECUTIVE_FAILURES}: {reason}"
+                )
+
+            state = vec_env.restart_one(env_id, filepath=vec_env.files[env_id])
+            states[env_id] = state
+            prev_s[env_id] = None
+            prev_a[env_id] = None
+
+            dim = int(vec_env.env_dims[env_id])
+            seed_id = int(vec_env.env_seed_ids[env_id])
+            active_progress[env_id] = {
+                "dim": dim,
+                "seed_id": seed_id,
+                "run_index": entry["run_index"],
+                "step": 0,
+                "next_step": 1,
+                "max_steps": max_steps_for_dim(dim),
+                "state": "ready",
+                "action_idx": None,
+            }
+            write_progress_snapshot("env_recovery")
+            return state
 
         initial_actions = agent.act_envs(
             state_by_eid,
@@ -281,29 +381,58 @@ def train_all(
                 sieve_rounds=SIEVE_MAX_ROUNDS,
                 action_idx=entry["action_idx"],
             )
-            vec_env.send_one(
-                env_id,
-                initial_actions[env_id],
-            )
-        pending = set(range(num_envs))
+            dispatch_one(env_id, initial_actions[env_id])
 
         t_start = time.time()
 
         while updates < total_updates:
-            ready = vec_env.poll_ready(list(pending))
-            if not ready:
-                time.sleep(0.0005)
-                continue
+            ready, dead = vec_env.poll_ready(list(pending))
+            now = time.monotonic()
+            timed_out = [
+                env_id
+                for env_id in pending
+                if env_id in pending_since
+                and now - pending_since[env_id]
+                > pending_timeout.get(env_id, float("inf"))
+            ]
 
             newly = {}
             detail_cycles = []
+            successful_results = 0
+
+            for env_id in sorted(set(dead) | set(timed_out)):
+                if env_id in timed_out:
+                    elapsed = now - pending_since.get(env_id, now)
+                    reason = (
+                        f"step wall-clock timeout after {elapsed:.1f}s "
+                        f"(limit={pending_timeout.get(env_id, 0.0):.1f}s)"
+                    )
+                else:
+                    process = vec_env.processes[env_id]
+                    reason = f"worker exited with code {process.exitcode}"
+                newly[env_id] = recover_env(env_id, reason)
+
+            ready = [env_id for env_id in ready if env_id in pending]
+            if not ready and not newly:
+                time.sleep(0.0005)
+                continue
 
             for env_id in ready:
                 old_dim = int(vec_env.env_dims[env_id])
                 old_seed_id = int(vec_env.env_seed_ids[env_id])
                 old_key = pair_key(old_dim, old_seed_id)
-                obs, reward, done, info = vec_env.recv_one(env_id)
+                try:
+                    obs, reward, done, info = vec_env.recv_one(env_id)
+                except Exception as exc:
+                    newly[env_id] = recover_env(
+                        env_id,
+                        f"receive failed: {type(exc).__name__}: {exc}",
+                    )
+                    continue
                 pending.discard(env_id)
+                pending_since.pop(env_id, None)
+                pending_timeout.pop(env_id, None)
+                consecutive_failures[env_id] = 0
 
                 entry = active_progress[env_id]
                 entry["step"] = int(info.get("step", entry["next_step"]))
@@ -336,6 +465,7 @@ def train_all(
                     done,
                 )
                 env_steps += 1
+                successful_results += 1
 
                 if done:
                     cycles_completed += 1
@@ -353,7 +483,13 @@ def train_all(
                     if cycles_completed % DETAIL_EVERY_CYCLES == 0:
                         detail_cycles.append(cycles_completed)
 
-                    next_state = vec_env.rotate_one(env_id)
+                    try:
+                        next_state = vec_env.rotate_one(env_id)
+                    except Exception as exc:
+                        next_state = recover_env(
+                            env_id,
+                            f"file rotation failed: {type(exc).__name__}: {exc}",
+                        )
                     states[env_id] = next_state
                     newly[env_id] = next_state
 
@@ -414,13 +550,10 @@ def train_all(
                     action_idx=entry["action_idx"],
                 )
 
-                vec_env.send_one(
-                    env_id,
-                    actions[env_id],
-                )
-                pending.add(env_id)
+                dispatch_one(env_id, actions[env_id])
 
-            if env_steps % log_every < len(ready):
+            processed_count = successful_results
+            if processed_count > 0 and env_steps % log_every < processed_count:
                 best_min = min(global_best.values()) if global_best else float("inf")
                 reached = sum(
                     1 for value in global_best.values() if value < goal_threshold
@@ -441,7 +574,7 @@ def train_all(
                 )
                 write_progress_snapshot("periodic_status")
 
-            if env_steps % save_every < len(ready):
+            if processed_count > 0 and env_steps % save_every < processed_count:
                 save_checkpoint("periodic")
 
     except KeyboardInterrupt:
